@@ -515,12 +515,19 @@ function renderMyCorrections() {
     wrap.appendChild(d);
     return;
   }
-  // Group by status
+  // Approved corrections are not shown here — they appear in the shift history instead.
   const groups = [
     { key: 'pending', label: 'Pending approval', cls: 'badge-pending' },
     { key: 'rejected', label: 'Rejected', cls: 'badge-rejected' },
-    { key: 'approved', label: 'Approved (now in shift history)', cls: 'badge-approved' },
   ];
+  const visible = corrections.filter(c => c.status !== 'approved');
+  if (visible.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = 'No pending or rejected requests.';
+    wrap.appendChild(d);
+    return;
+  }
   for (const g of groups) {
     const items = corrections.filter(c => c.status === g.key);
     if (items.length === 0) continue;
