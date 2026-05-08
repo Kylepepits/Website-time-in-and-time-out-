@@ -335,17 +335,48 @@ function tickLive() {
 setInterval(tickLive, 1000);
 
 async function workerSignIn() {
-  const name = (nameEl.value || '').trim();
+  const rawName = (nameEl.value || '').trim();
   const pin = (pinEl.value || '').trim();
-  if (!name) { setLoginStatus('Enter your name.', true); return; }
+  if (!rawName) { setLoginStatus('Enter your name.', true); return; }
   if (!/^\d{4}$/.test(pin)) { setLoginStatus('PIN must be 4 digits.', true); return; }
   $('signin').disabled = true;
   setLoginStatus('Signing in…', false);
   try {
-    const userKey = await sha256Hex(name.toLowerCase() + ':' + pin);
+    const nameLower = rawName.toLowerCase();
+    const nameKey = await sha256Hex(nameLower);
+    const userKey = await sha256Hex(nameLower + ':' + pin);
+    const claimRef = doc(db, 'names', nameKey);
+    const claimSnap = await getDoc(claimRef);
+
+    if (claimSnap.exists()) {
+      const claim = claimSnap.data() || {};
+      if (claim.userKey !== userKey) {
+        setLoginStatus('', false);
+        $('signin').disabled = false;
+        alert('❌ Wrong PIN for "' + (claim.name || rawName) + '". This name is already registered with a different PIN.');
+        pinEl.value = '';
+        pinEl.focus();
+        return;
+      }
+      // PIN matches the claim — proceed.
+    } else {
+      // First-time sign-in: also reject if a user doc already exists at this userKey
+      // under a different display-cased name (defensive — shouldn't normally happen).
+      try {
+        await setDoc(claimRef, { name: rawName, nameLower, userKey, createdAt: serverTimestamp() });
+      } catch (e) {
+        console.error('Failed to create name claim:', e);
+        $('signin').disabled = false;
+        alert('Could not register name: ' + (e.message || e.code));
+        return;
+      }
+    }
+
+    // Use the canonical display name from the claim (preserves original casing of the first registrant)
+    const displayName = (claimSnap.exists() && claimSnap.data().name) ? claimSnap.data().name : rawName;
     const docRef = doc(db, 'users', userKey);
-    workerSession = { name, userKey, docRef, unsubscribe: null };
-    sessionStorage.setItem('tt_worker', JSON.stringify({ name, pin }));
+    workerSession = { name: displayName, userKey, docRef, unsubscribe: null };
+    sessionStorage.setItem('tt_worker', JSON.stringify({ name: rawName, pin }));
     setSync('', 'Connecting…');
     workerSession.unsubscribe = onSnapshot(docRef, (snap) => {
       const data = snap.data() || {};
@@ -359,9 +390,9 @@ async function workerSignIn() {
     });
     const initial = await getDoc(docRef);
     if (!initial.exists()) {
-      await setDoc(docRef, { name, nameLower: name.toLowerCase(), entries: [], active: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    } else if (initial.data().name !== name || !initial.data().nameLower) {
-      await updateDoc(docRef, { name, nameLower: name.toLowerCase(), updatedAt: serverTimestamp() });
+      await setDoc(docRef, { name: displayName, nameLower, entries: [], active: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    } else if (initial.data().name !== displayName || !initial.data().nameLower) {
+      await updateDoc(docRef, { name: displayName, nameLower, updatedAt: serverTimestamp() });
     }
     $('signin').disabled = false;
   } catch (err) {
