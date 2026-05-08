@@ -309,8 +309,9 @@ function renderAvatar() {
   avatarMenuName.textContent = name;
   // Reset content
   while (avatarEl.firstChild) avatarEl.removeChild(avatarEl.firstChild);
+  // Priority: user-uploaded > special hardcoded > first-letter default.
   const special = specialPhoto(name);
-  const photoUrl = special || userPhoto;
+  const photoUrl = userPhoto || special;
   if (photoUrl) {
     const img = document.createElement('img');
     img.alt = name;
@@ -319,15 +320,10 @@ function renderAvatar() {
   } else {
     avatarEl.textContent = firstLetter(name);
   }
-  // Menu options: special photo → no upload/remove. Else: upload (always) + remove (only if uploaded).
-  if (special) {
-    uploadBtn.classList.add('hidden');
-    removeBtn.classList.add('hidden');
-  } else {
-    uploadBtn.classList.remove('hidden');
-    if (userPhoto) removeBtn.classList.remove('hidden');
-    else removeBtn.classList.add('hidden');
-  }
+  // Upload is always available. Remove is shown when the user has uploaded a custom photo.
+  uploadBtn.classList.remove('hidden');
+  if (userPhoto) removeBtn.classList.remove('hidden');
+  else removeBtn.classList.add('hidden');
 }
 
 function toggleAvatarMenu() {
