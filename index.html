@@ -358,7 +358,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, setDoc, getDoc, updateDoc, serverTimestamp, collection, getDocs, deleteField } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJGkIssqWzMVRfrQIpQnCU8YPa8buL1WU",
@@ -913,14 +913,12 @@ async function markPaidForWeek(userId, name, weekKey, monday, sunday, pay, btn) 
     const startMs = monday.getTime();
     const endMs = sunday.getTime() + 24 * 60 * 60 * 1000 - 1;
     const remaining = allEntries.filter(e => !(e.timeIn >= startMs && e.timeIn <= endMs));
-    const paidLog = Array.isArray(data.paidLog) ? data.paidLog.slice() : [];
-    paidLog.push({
-      week: weekKey, range,
-      paidAt: Date.now(),
-      amount: Math.round(pay),
-      entriesCleared: allEntries.length - remaining.length,
+    // Hard delete: wipe the week's entries and remove any legacy paidLog field too.
+    await updateDoc(userRef, {
+      entries: remaining,
+      paidLog: deleteField(),
+      updatedAt: serverTimestamp(),
     });
-    await updateDoc(userRef, { entries: remaining, paidLog, updatedAt: serverTimestamp() });
     await loadAdminDashboard();
   } catch (err) {
     console.error(err);
