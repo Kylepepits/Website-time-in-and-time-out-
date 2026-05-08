@@ -79,7 +79,15 @@ $('backFromWorker').addEventListener('click', () => show('landing'));
 $('backFromAdmin').addEventListener('click', () => show('landing'));
 
 // =========================== WORKER FLOW ===========================
-let workerSession = null, entries = [], active = null, corrections = [];
+let workerSession = null, entries = [], active = null, corrections = [], userPhoto = null;
+
+// Hardcoded profile photos for specific people (case-insensitive name match).
+function specialPhoto(name) {
+  const n = (name || '').trim().toLowerCase();
+  if (n === 'heshane meriel fernandez') return 'assets/profiles/heshane-meriel-fernandez.jpg';
+  if (n === 'kyle' || n.startsWith('kyle ')) return 'assets/profiles/kyle.jpg';
+  return null;
+}
 
 const nameEl = $('name'), pinEl = $('pin');
 const loginStatus = $('loginStatus');
@@ -231,10 +239,11 @@ async function workerSignIn() {
       const data = snap.data() || {};
       entries = Array.isArray(data.entries) ? data.entries : [];
       corrections = Array.isArray(data.corrections) ? data.corrections : [];
+      userPhoto = typeof data.photo === 'string' ? data.photo : null;
       active = data.active || null;
       setSync('ok', 'Synced • ' + new Date().toLocaleTimeString());
       show('appCard', 'statsCard', 'historyCard', 'correctionCard');
-      renderWorker(); renderMyCorrections(); tickLive();
+      renderWorker(); renderMyCorrections(); renderAvatar(); tickLive();
     }, (err) => {
       setSync('err', 'Sync error: ' + err.code); console.error(err);
     });
@@ -270,11 +279,115 @@ async function workerSignIn() {
 function workerSignOut() {
   if (active) { alert('Clock out first before signing out.'); return; }
   if (workerSession && workerSession.unsubscribe) workerSession.unsubscribe();
-  workerSession = null; entries = []; active = null;
+  workerSession = null; entries = []; active = null; corrections = []; userPhoto = null;
   sessionStorage.removeItem('tt_worker');
   pinEl.value = '';
+  closeAvatarMenu();
   show('landing');
 }
+
+// ---------- Avatar / profile menu ----------
+const avatarEl = $('avatar');
+const avatarMenu = $('avatarMenu');
+const avatarMenuName = $('avatarMenuName');
+const uploadBtn = $('uploadProfile');
+const removeBtn = $('removeProfile');
+const profileFile = $('profileFile');
+
+function firstLetter(name) {
+  const s = (name || '').trim();
+  if (!s) return '?';
+  return s[0].toUpperCase();
+}
+
+function renderAvatar() {
+  if (!workerSession) return;
+  const name = workerSession.name;
+  avatarMenuName.textContent = name;
+  // Reset content
+  while (avatarEl.firstChild) avatarEl.removeChild(avatarEl.firstChild);
+  const special = specialPhoto(name);
+  const photoUrl = special || userPhoto;
+  if (photoUrl) {
+    const img = document.createElement('img');
+    img.alt = name;
+    img.src = photoUrl;
+    avatarEl.appendChild(img);
+  } else {
+    avatarEl.textContent = firstLetter(name);
+  }
+  // Menu options: special photo → no upload/remove. Else: upload (always) + remove (only if uploaded).
+  if (special) {
+    uploadBtn.classList.add('hidden');
+    removeBtn.classList.add('hidden');
+  } else {
+    uploadBtn.classList.remove('hidden');
+    if (userPhoto) removeBtn.classList.remove('hidden');
+    else removeBtn.classList.add('hidden');
+  }
+}
+
+function toggleAvatarMenu() {
+  if (avatarMenu.classList.contains('hidden')) avatarMenu.classList.remove('hidden');
+  else avatarMenu.classList.add('hidden');
+}
+function closeAvatarMenu() { avatarMenu.classList.add('hidden'); }
+
+avatarEl.addEventListener('click', (e) => { e.stopPropagation(); toggleAvatarMenu(); });
+document.addEventListener('click', (e) => {
+  if (!avatarMenu.classList.contains('hidden') && !avatarMenu.contains(e.target) && e.target !== avatarEl) {
+    closeAvatarMenu();
+  }
+});
+
+uploadBtn.addEventListener('click', () => { profileFile.click(); });
+removeBtn.addEventListener('click', async () => {
+  if (!workerSession) return;
+  if (!confirm('Remove your profile photo?')) return;
+  try {
+    await updateDoc(workerSession.docRef, { photo: deleteField(), updatedAt: serverTimestamp() });
+    closeAvatarMenu();
+  } catch (err) {
+    alert('Remove failed: ' + (err.message || err.code));
+  }
+});
+
+async function resizeImage(file, max = 256) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.onload = () => {
+        const ratio = Math.min(max / img.width, max / img.height, 1);
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL('image/jpeg', 0.85)); } catch (err) { reject(err); }
+      };
+      img.onerror = () => reject(new Error('Could not load image'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+profileFile.addEventListener('change', async () => {
+  const file = profileFile.files && profileFile.files[0];
+  profileFile.value = ''; // reset so same file can be re-selected
+  if (!file || !workerSession) return;
+  if (!file.type.startsWith('image/')) { alert('Please pick an image file.'); return; }
+  try {
+    const dataUrl = await resizeImage(file, 256);
+    await updateDoc(workerSession.docRef, { photo: dataUrl, updatedAt: serverTimestamp() });
+    closeAvatarMenu();
+  } catch (err) {
+    alert('Upload failed: ' + (err.message || err.code));
+  }
+});
 
 async function clockIn() {
   if (!workerSession || active) return;

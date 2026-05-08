@@ -80,7 +80,16 @@
   <div id="appCard" class="card hidden">
     <div class="row" style="justify-content: space-between;">
       <div><span class="sync-status"><span id="syncDot" class="sync-dot"></span><span id="syncText">Connecting…</span></span></div>
-      <button id="signout" class="btn-clear" type="button">Sign out</button>
+      <div class="avatar-wrap">
+        <div id="avatar" class="avatar" title="Profile menu">?</div>
+        <div id="avatarMenu" class="avatar-menu hidden">
+          <div class="avatar-menu-name">Signed in as<strong id="avatarMenuName">—</strong></div>
+          <button id="uploadProfile" class="avatar-menu-item hidden" type="button">📷 Upload profile photo</button>
+          <button id="removeProfile" class="avatar-menu-item hidden" type="button">🗑️ Remove profile photo</button>
+          <button id="signout" class="avatar-menu-item danger" type="button">↩ Sign out</button>
+        </div>
+        <input id="profileFile" type="file" accept="image/*" style="display:none;" />
+      </div>
     </div>
     <div class="row" style="margin-top: 14px;">
       <button id="timeIn" class="btn-in" type="button">Time In</button>
