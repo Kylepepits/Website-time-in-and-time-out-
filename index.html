@@ -15,17 +15,18 @@
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 980px; margin: 0 auto; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
   h1 { margin: 0 0 6px; font-size: 26px; }
+  h2 { margin: 4px 0 12px; font-size: 18px; color: var(--text); }
   .sub { color: var(--muted); margin-bottom: 20px; }
   .card { background: var(--panel); border: 1px solid var(--border);
     border-radius: 10px; padding: 18px; margin-bottom: 16px; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   label { color: var(--muted); font-size: 13px; }
-  input[type=text], input[type=password] { background: var(--panel-2); color: var(--text);
+  input { background: var(--panel-2); color: var(--text);
     border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font: inherit; }
   input[type=text] { min-width: 200px; }
-  input[type=password] { width: 90px; letter-spacing: 4px; text-align: center; }
+  input.pin { width: 90px; letter-spacing: 4px; text-align: center; }
   button { border: 0; border-radius: 6px; padding: 9px 14px; font: inherit; font-weight: 600;
     cursor: pointer; color: white; transition: filter .12s; }
   button:hover { filter: brightness(1.1); }
@@ -35,6 +36,9 @@
   .btn-export { background: #0ea5e9; }
   .btn-clear { background: #6b7280; }
   .btn-signin { background: #6366f1; }
+  .btn-admin { background: #a855f7; }
+  .btn-worker { background: #14b8a6; }
+  .btn-big { padding: 16px 32px; font-size: 16px; }
   .status { padding: 10px 14px; border-radius: 6px; margin-top: 10px; font-weight: 600; }
   .status.in { background: rgba(34,197,94,.15); color: #4ade80; }
   .status.out { background: rgba(148,163,184,.15); color: var(--muted); }
@@ -47,6 +51,7 @@
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
   tr:hover td { background: rgba(255,255,255,.02); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .empty { color: var(--muted); padding: 20px; text-align: center; }
   .pay { color: #4ade80; font-weight: 600; }
   .live-timer { color: var(--warn); font-variant-numeric: tabular-nums; }
@@ -58,6 +63,11 @@
   .sync-status { font-size: 12px; color: var(--muted); }
   .hidden { display: none !important; }
   .pin-help { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .week-block { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 12px; }
+  .week-title { font-size: 16px; font-weight: 700; }
+  .week-sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .week-totals { color: #4ade80; font-weight: 700; margin-top: 8px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -65,16 +75,39 @@
   <h1>Time Tracker</h1>
   <div class="sub">4-hour shifts • ₱500 per shift • 7 days a week • synced across devices</div>
 
-  <div id="loginCard" class="card">
+  <div id="landing" class="card">
+    <h2>Sign in</h2>
+    <div class="row">
+      <button id="goWorker" class="btn-worker btn-big" type="button">👷 Login as Worker</button>
+      <button id="goAdmin" class="btn-admin btn-big" type="button">🔑 Login as Admin</button>
+    </div>
+  </div>
+
+  <div id="workerLogin" class="card hidden">
+    <h2>Worker login</h2>
     <div class="row">
       <label for="name">Name</label>
       <input id="name" type="text" placeholder="e.g. Juan dela Cruz" autocomplete="off" maxlength="80" />
       <label for="pin">4-digit PIN</label>
-      <input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="off" />
+      <input id="pin" class="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="off" />
       <button id="signin" class="btn-signin" type="button">Sign in</button>
+      <button id="backFromWorker" class="btn-clear" type="button">← Back</button>
     </div>
-    <div class="pin-help">Type a name + 4-digit PIN. The same name + same PIN on any device = same data. Forget the PIN and the data is gone.</div>
+    <div class="pin-help">Same name + same PIN on any device = same data. Forget the PIN and the data is gone.</div>
     <div id="loginStatus" class="status out hidden"></div>
+  </div>
+
+  <div id="adminLogin" class="card hidden">
+    <h2>Admin login</h2>
+    <div class="row">
+      <label for="adminUser">Username</label>
+      <input id="adminUser" type="text" placeholder="admin" autocomplete="off" />
+      <label for="adminPass">Password</label>
+      <input id="adminPass" type="password" placeholder="••••••" autocomplete="off" />
+      <button id="adminSignin" class="btn-signin" type="button">Sign in</button>
+      <button id="backFromAdmin" class="btn-clear" type="button">← Back</button>
+    </div>
+    <div id="adminLoginStatus" class="status out hidden"></div>
   </div>
 
   <div id="appCard" class="card hidden">
@@ -113,11 +146,29 @@
     </div>
     <div id="tableWrap"></div>
   </div>
+
+  <div id="adminDash" class="card hidden">
+    <div class="row" style="justify-content: space-between;">
+      <h2 style="margin:0;">📊 Admin Dashboard</h2>
+      <div class="row">
+        <button id="refreshAdmin" class="btn-signin" type="button">🔄 Refresh</button>
+        <button id="exportAdmin" class="btn-export" type="button">Export all to Excel</button>
+        <button id="adminSignout" class="btn-clear" type="button">Sign out</button>
+      </div>
+    </div>
+    <div id="adminLoadingStatus" class="status out" style="margin-top:12px;">Loading…</div>
+  </div>
+
+  <div id="adminGrand" class="card hidden">
+    <div id="adminGrandStats" class="stats"></div>
+  </div>
+
+  <div id="adminWeeks"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, getDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, setDoc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJGkIssqWzMVRfrQIpQnCU8YPa8buL1WU",
@@ -129,6 +180,10 @@ const firebaseConfig = {
   measurementId: "G-98QH8HVRY2"
 };
 
+// NOTE: client-side admin credentials are NOT secure. Anyone viewing source can read these.
+const ADMIN_USER = "admin";
+const ADMIN_PASS = "admin";
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -136,15 +191,7 @@ const SHIFT_MS = 4 * 60 * 60 * 1000;
 const PAY_PER_SHIFT = 500;
 
 const $ = id => document.getElementById(id);
-const nameEl = $('name'), pinEl = $('pin');
-const signinBtn = $('signin'), signoutBtn = $('signout'), loginStatus = $('loginStatus');
-const loginCard = $('loginCard'), appCard = $('appCard');
-const statsCard = $('statsCard'), historyCard = $('historyCard');
-const timeInBtn = $('timeIn'), timeOutBtn = $('timeOut');
-const statusEl = $('status'), liveTimer = $('liveTimer'), shiftWarn = $('shiftWarn');
-const tableWrap = $('tableWrap'), syncDot = $('syncDot'), syncText = $('syncText');
-
-let session = null, entries = [], active = null, unsubscribe = null;
+function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
 const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const fmtDuration = ms => {
@@ -152,7 +199,7 @@ const fmtDuration = ms => {
   return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
 };
 const todayKey = () => new Date().toLocaleDateString();
-const peso = n => '₱' + n.toLocaleString();
+const peso = n => '₱' + Math.round(n).toLocaleString();
 const calcPay = hours => Math.floor(hours / 4) * PAY_PER_SHIFT;
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const dayName = ts => DAY_NAMES[new Date(ts).getDay()];
@@ -164,6 +211,15 @@ function isoWeek(ts) {
   const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   return d.getFullYear() + '-W' + String(weekNo).padStart(2,'0');
 }
+function weekRange(ts) {
+  const d = new Date(ts); d.setHours(0,0,0,0);
+  const day = d.getDay() || 7;
+  const monday = new Date(d); monday.setDate(d.getDate() - (day - 1));
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  return [monday, sunday];
+}
+const fmtDate = d => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const fmtDateShort = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const sanitizeFile = s => (s || 'unnamed').replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g,'_').slice(0, 40) || 'unnamed';
 
 async function sha256Hex(text) {
@@ -172,28 +228,46 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+const VIEWS = ['landing', 'workerLogin', 'adminLogin', 'appCard', 'statsCard', 'historyCard', 'adminDash', 'adminGrand'];
+function show(...ids) {
+  for (const v of VIEWS) {
+    const el = $(v);
+    if (!el) continue;
+    if (ids.includes(v)) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  }
+  const aw = $('adminWeeks');
+  if (ids.includes('adminDash')) aw.classList.remove('hidden');
+  else { aw.classList.add('hidden'); clearChildren(aw); }
+}
+
+$('goWorker').addEventListener('click', () => { show('workerLogin'); $('name').focus(); });
+$('goAdmin').addEventListener('click', () => { show('adminLogin'); $('adminUser').focus(); });
+$('backFromWorker').addEventListener('click', () => show('landing'));
+$('backFromAdmin').addEventListener('click', () => show('landing'));
+
+// =========================== WORKER FLOW ===========================
+let workerSession = null, entries = [], active = null;
+
+const nameEl = $('name'), pinEl = $('pin');
+const loginStatus = $('loginStatus');
+const statusEl = $('status'), liveTimer = $('liveTimer'), shiftWarn = $('shiftWarn');
+const tableWrap = $('tableWrap'), syncDot = $('syncDot'), syncText = $('syncText');
+const timeInBtn = $('timeIn'), timeOutBtn = $('timeOut');
+
 function setSync(state, text) {
   syncDot.className = 'sync-dot ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
   syncText.textContent = text;
 }
-
-function showLogin(msg, isError) {
-  loginCard.classList.remove('hidden');
-  appCard.classList.add('hidden'); statsCard.classList.add('hidden'); historyCard.classList.add('hidden');
-  if (msg) {
-    loginStatus.classList.remove('hidden');
-    loginStatus.className = 'status ' + (isError ? 'error' : 'out');
-    loginStatus.textContent = msg;
-  } else { loginStatus.classList.add('hidden'); }
+function setLoginStatus(msg, isError) {
+  if (!msg) { loginStatus.classList.add('hidden'); return; }
+  loginStatus.classList.remove('hidden');
+  loginStatus.className = 'status ' + (isError ? 'error' : 'out');
+  loginStatus.textContent = msg;
 }
 
-function showApp() {
-  loginCard.classList.add('hidden');
-  appCard.classList.remove('hidden'); statsCard.classList.remove('hidden'); historyCard.classList.remove('hidden');
-}
-
-function buildTable() {
-  while (tableWrap.firstChild) tableWrap.removeChild(tableWrap.firstChild);
+function buildWorkerTable() {
+  clearChildren(tableWrap);
   if (entries.length === 0) {
     const d = document.createElement('div'); d.className = 'empty';
     d.textContent = 'No shifts logged yet.'; tableWrap.appendChild(d); return;
@@ -209,14 +283,15 @@ function buildTable() {
     const cells = [e.dateKey, dayName(e.timeIn), fmtTime(e.timeIn), fmtTime(e.timeOut), e.hours.toFixed(2), String(e.shifts), peso(e.pay)];
     cells.forEach((val, i) => {
       const td = document.createElement('td'); td.textContent = val;
-      if (i === 6) td.className = 'pay'; tr.appendChild(td);
+      if (i === 6) td.className = 'pay';
+      tr.appendChild(td);
     });
     tbody.appendChild(tr);
   }
   table.appendChild(tbody); tableWrap.appendChild(table);
 }
 
-function render() {
+function renderWorker() {
   if (active) {
     timeInBtn.disabled = true; timeOutBtn.disabled = false;
     statusEl.className = 'status in';
@@ -224,7 +299,7 @@ function render() {
   } else {
     timeInBtn.disabled = false; timeOutBtn.disabled = true;
     statusEl.className = 'status out';
-    statusEl.textContent = 'Hello ' + (session ? session.name : '') + ' — ready to clock in.';
+    statusEl.textContent = 'Hello ' + (workerSession ? workerSession.name : '') + ' — ready to clock in.';
     liveTimer.textContent = ''; shiftWarn.textContent = '';
   }
   const today = todayKey();
@@ -241,7 +316,7 @@ function render() {
   $('weekPay').textContent = peso(calcPay(weekHours));
   $('totalShifts').textContent = String(Math.floor(totalHours / 4));
   $('totalPay').textContent = peso(calcPay(totalHours));
-  buildTable();
+  buildWorkerTable();
 }
 
 function tickLive() {
@@ -257,30 +332,30 @@ function tickLive() {
     shiftWarn.style.color = '#4ade80';
   }
 }
+setInterval(tickLive, 1000);
 
-async function signIn() {
+async function workerSignIn() {
   const name = (nameEl.value || '').trim();
   const pin = (pinEl.value || '').trim();
-  if (!name) { showLogin('Enter your name.', true); return; }
-  if (!/^\d{4}$/.test(pin)) { showLogin('PIN must be 4 digits.', true); return; }
-  signinBtn.disabled = true;
-  showLogin('Signing in…', false);
+  if (!name) { setLoginStatus('Enter your name.', true); return; }
+  if (!/^\d{4}$/.test(pin)) { setLoginStatus('PIN must be 4 digits.', true); return; }
+  $('signin').disabled = true;
+  setLoginStatus('Signing in…', false);
   try {
     const userKey = await sha256Hex(name.toLowerCase() + ':' + pin);
     const docRef = doc(db, 'users', userKey);
-    session = { name, userKey, docRef };
-    sessionStorage.setItem('tt_session', JSON.stringify({ name, pin }));
-    if (unsubscribe) unsubscribe();
+    workerSession = { name, userKey, docRef, unsubscribe: null };
+    sessionStorage.setItem('tt_worker', JSON.stringify({ name, pin }));
     setSync('', 'Connecting…');
-    unsubscribe = onSnapshot(docRef, (snap) => {
+    workerSession.unsubscribe = onSnapshot(docRef, (snap) => {
       const data = snap.data() || {};
       entries = Array.isArray(data.entries) ? data.entries : [];
       active = data.active || null;
       setSync('ok', 'Synced • ' + new Date().toLocaleTimeString());
-      showApp(); render(); tickLive();
+      show('appCard', 'statsCard', 'historyCard');
+      renderWorker(); tickLive();
     }, (err) => {
-      setSync('err', 'Sync error: ' + err.code);
-      console.error(err);
+      setSync('err', 'Sync error: ' + err.code); console.error(err);
     });
     const initial = await getDoc(docRef);
     if (!initial.exists()) {
@@ -288,33 +363,32 @@ async function signIn() {
     } else if (initial.data().name !== name || !initial.data().nameLower) {
       await updateDoc(docRef, { name, nameLower: name.toLowerCase(), updatedAt: serverTimestamp() });
     }
-    signinBtn.disabled = false;
+    $('signin').disabled = false;
   } catch (err) {
     console.error(err);
     setSync('err', 'Failed');
-    showLogin('Sign-in failed: ' + (err.message || err.code || 'unknown'), true);
-    signinBtn.disabled = false;
+    setLoginStatus('Sign-in failed: ' + (err.message || err.code || 'unknown'), true);
+    $('signin').disabled = false;
   }
 }
 
-function signOut() {
+function workerSignOut() {
   if (active) { alert('Clock out first before signing out.'); return; }
-  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-  session = null; entries = []; active = null;
-  sessionStorage.removeItem('tt_session');
+  if (workerSession && workerSession.unsubscribe) workerSession.unsubscribe();
+  workerSession = null; entries = []; active = null;
+  sessionStorage.removeItem('tt_worker');
   pinEl.value = '';
-  showLogin('', false);
+  show('landing');
 }
 
 async function clockIn() {
-  if (!session || active) return;
+  if (!workerSession || active) return;
   try {
-    await updateDoc(session.docRef, { active: { name: session.name, timeIn: Date.now() }, updatedAt: serverTimestamp() });
+    await updateDoc(workerSession.docRef, { active: { name: workerSession.name, timeIn: Date.now() }, updatedAt: serverTimestamp() });
   } catch (err) { alert('Failed to clock in: ' + err.message); }
 }
-
 async function clockOut() {
-  if (!session || !active) return;
+  if (!workerSession || !active) return;
   const now = Date.now(), elapsed = now - active.timeIn;
   if (elapsed < SHIFT_MS) {
     if (!confirm('Only ' + fmtDuration(elapsed) + ' elapsed. ' + fmtDuration(SHIFT_MS - elapsed) + ' more is needed for a full 4-hour shift — pay will be ₱0 for this incomplete session. Clock out anyway?')) return;
@@ -323,31 +397,29 @@ async function clockOut() {
   const shifts = Math.floor(hours / 4);
   const pay = shifts * PAY_PER_SHIFT;
   const entry = {
-    name: session.name,
+    name: workerSession.name,
     dateKey: new Date(active.timeIn).toLocaleDateString(),
     timeIn: active.timeIn, timeOut: now,
     hours: +hours.toFixed(2), shifts, pay,
   };
   try {
-    await updateDoc(session.docRef, { entries: entries.concat([entry]), active: null, updatedAt: serverTimestamp() });
+    await updateDoc(workerSession.docRef, { entries: entries.concat([entry]), active: null, updatedAt: serverTimestamp() });
   } catch (err) { alert('Failed to clock out: ' + err.message); }
 }
 
 async function clearAll() {
-  if (!session) return;
-  if (active) { alert('Clock out first.'); return; }
-  if (!confirm('Delete ALL of ' + session.name + '\'s shifts? This cannot be undone.')) return;
-  try { await updateDoc(session.docRef, { entries: [], updatedAt: serverTimestamp() }); }
+  if (!workerSession || active) { alert('Clock out first.'); return; }
+  if (!confirm('Delete ALL of ' + workerSession.name + '\'s shifts? This cannot be undone.')) return;
+  try { await updateDoc(workerSession.docRef, { entries: [], updatedAt: serverTimestamp() }); }
   catch (err) { alert('Failed: ' + err.message); }
 }
 
-function exportExcel() {
-  if (!session || entries.length === 0) { alert('No shifts to export.'); return; }
+function exportWorkerExcel() {
+  if (!workerSession || entries.length === 0) { alert('No shifts to export.'); return; }
   const stamp = new Date().toISOString().slice(0,10);
   const data = entries.map(e => ({
     Name: e.name, Date: e.dateKey, Day: dayName(e.timeIn), Week: isoWeek(e.timeIn),
-    'Time In': new Date(e.timeIn).toLocaleString(),
-    'Time Out': new Date(e.timeOut).toLocaleString(),
+    'Time In': new Date(e.timeIn).toLocaleString(), 'Time Out': new Date(e.timeOut).toLocaleString(),
     'Hours Worked': e.hours, 'Completed Shifts (4h)': e.shifts, 'Pay (PHP)': e.pay,
   }));
   const totalHours = entries.reduce((a,e) => a + e.hours, 0);
@@ -380,27 +452,279 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, 'Shifts');
   XLSX.utils.book_append_sheet(wb, ws2, 'Weekly Summary');
-  XLSX.writeFile(wb, 'time-log-' + sanitizeFile(session.name) + '-' + stamp + '.xlsx');
+  XLSX.writeFile(wb, 'time-log-' + sanitizeFile(workerSession.name) + '-' + stamp + '.xlsx');
 }
 
-signinBtn.addEventListener('click', signIn);
-pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+$('signin').addEventListener('click', workerSignIn);
+pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') workerSignIn(); });
 nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') pinEl.focus(); });
-signoutBtn.addEventListener('click', signOut);
+$('signout').addEventListener('click', workerSignOut);
 timeInBtn.addEventListener('click', clockIn);
 timeOutBtn.addEventListener('click', clockOut);
-$('export').addEventListener('click', exportExcel);
+$('export').addEventListener('click', exportWorkerExcel);
 $('clear').addEventListener('click', clearAll);
 
-setInterval(tickLive, 1000);
+// =========================== ADMIN FLOW ===========================
+let adminAllUsers = [];
 
+function setAdminLoginStatus(msg, isError) {
+  const el = $('adminLoginStatus');
+  if (!msg) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.className = 'status ' + (isError ? 'error' : 'out');
+  el.textContent = msg;
+}
+
+async function adminSignIn() {
+  const u = ($('adminUser').value || '').trim();
+  const p = ($('adminPass').value || '').trim();
+  if (u !== ADMIN_USER || p !== ADMIN_PASS) {
+    setAdminLoginStatus('Invalid admin credentials.', true);
+    return;
+  }
+  setAdminLoginStatus('', false);
+  sessionStorage.setItem('tt_admin', '1');
+  await loadAdminDashboard();
+}
+function adminSignOut() {
+  sessionStorage.removeItem('tt_admin');
+  $('adminUser').value = ''; $('adminPass').value = '';
+  show('landing');
+}
+
+async function loadAdminDashboard() {
+  show('adminDash');
+  const ls = $('adminLoadingStatus');
+  ls.classList.remove('hidden');
+  ls.className = 'status out'; ls.textContent = 'Loading users…';
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    adminAllUsers = [];
+    snap.forEach(s => {
+      const d = s.data() || {};
+      if (Array.isArray(d.entries) && d.entries.length > 0) {
+        adminAllUsers.push({ name: d.name || '(unnamed)', entries: d.entries });
+      }
+    });
+    ls.classList.add('hidden');
+    renderAdminDashboard();
+  } catch (err) {
+    ls.className = 'status error';
+    ls.textContent = 'Failed to load: ' + (err.message || err.code) + ' — make sure Firestore rules allow `list`.';
+    console.error(err);
+  }
+}
+
+function renderAdminDashboard() {
+  const byWeek = {};
+  let grandHours = 0;
+  const userNames = new Set();
+  for (const u of adminAllUsers) {
+    userNames.add(u.name);
+    for (const e of u.entries) {
+      const wk = isoWeek(e.timeIn);
+      if (!byWeek[wk]) {
+        const [mon, sun] = weekRange(e.timeIn);
+        byWeek[wk] = { weekKey: wk, monday: mon, sunday: sun, byUser: {} };
+      }
+      const bu = byWeek[wk].byUser;
+      if (!bu[u.name]) bu[u.name] = { hours: 0, days: new Set(), entries: [] };
+      bu[u.name].hours += e.hours;
+      bu[u.name].days.add(e.dateKey);
+      bu[u.name].entries.push(e);
+      grandHours += e.hours;
+    }
+  }
+  const grandShifts = Math.floor(grandHours / 4);
+  const grandPay = grandShifts * PAY_PER_SHIFT;
+
+  const gs = $('adminGrandStats');
+  clearChildren(gs);
+  const gt = [
+    { v: String(userNames.size), l: 'Total workers' },
+    { v: grandHours.toFixed(2), l: 'Total hours' },
+    { v: String(grandShifts), l: 'Total shifts (4h)' },
+    { v: peso(grandPay), l: 'Total payout', cls: 'pay' },
+  ];
+  for (const s of gt) {
+    const div = document.createElement('div');
+    div.className = 'stat';
+    const v = document.createElement('div'); v.className = 'v ' + (s.cls||''); v.textContent = s.v;
+    const l = document.createElement('div'); l.className = 'l'; l.textContent = s.l;
+    div.appendChild(v); div.appendChild(l);
+    gs.appendChild(div);
+  }
+  $('adminGrand').classList.remove('hidden');
+
+  const weeksOrdered = Object.values(byWeek).sort((a,b) => b.monday - a.monday);
+  const container = $('adminWeeks');
+  clearChildren(container);
+  if (weeksOrdered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'card empty';
+    empty.textContent = 'No shifts logged by anyone yet.';
+    container.appendChild(empty);
+    return;
+  }
+  let weekIndex = weeksOrdered.length;
+  for (const w of weeksOrdered) {
+    const block = document.createElement('div');
+    block.className = 'week-block';
+
+    const title = document.createElement('div');
+    title.className = 'week-title';
+    title.textContent = 'Week ' + weekIndex + ' • ' + w.weekKey;
+    block.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.className = 'week-sub';
+    sub.textContent = fmtDate(w.monday) + '  →  ' + fmtDate(w.sunday);
+    block.appendChild(sub);
+
+    const t = document.createElement('table');
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Worker', 'Days worked (of 7)', 'Hours', 'Shifts (4h)', 'Salary (Mon–Sun)'].forEach((h, i) => {
+      const th = document.createElement('th'); th.textContent = h;
+      if (i >= 1) th.className = 'num';
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    t.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    let weekHours = 0, weekShifts = 0, weekPay = 0;
+    const userRows = Object.entries(w.byUser).sort((a,b) => a[0].localeCompare(b[0]));
+    for (const [name, agg] of userRows) {
+      const shifts = Math.floor(agg.hours / 4);
+      const pay = shifts * PAY_PER_SHIFT;
+      weekHours += agg.hours; weekShifts += shifts; weekPay += pay;
+      const tr = document.createElement('tr');
+      const cells = [
+        { v: name },
+        { v: agg.days.size + ' / 7', cls: 'num' },
+        { v: agg.hours.toFixed(2), cls: 'num' },
+        { v: String(shifts), cls: 'num' },
+        { v: peso(pay), cls: 'num pay' },
+      ];
+      for (const c of cells) {
+        const td = document.createElement('td');
+        td.textContent = c.v;
+        if (c.cls) td.className = c.cls;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    t.appendChild(tbody);
+    block.appendChild(t);
+
+    const totals = document.createElement('div');
+    totals.className = 'week-totals';
+    totals.textContent = 'Week total: ' + weekHours.toFixed(2) + ' h • ' + weekShifts + ' shifts • ' + peso(weekPay);
+    block.appendChild(totals);
+
+    container.appendChild(block);
+    weekIndex--;
+  }
+}
+
+function exportAdminExcel() {
+  if (adminAllUsers.length === 0) { alert('No data to export.'); return; }
+  const stamp = new Date().toISOString().slice(0,10);
+
+  const allShifts = [];
+  for (const u of adminAllUsers) {
+    for (const e of u.entries) {
+      allShifts.push({
+        Worker: u.name, Date: e.dateKey, Day: dayName(e.timeIn), Week: isoWeek(e.timeIn),
+        'Time In': new Date(e.timeIn).toLocaleString(),
+        'Time Out': new Date(e.timeOut).toLocaleString(),
+        'Hours': e.hours, 'Shifts (4h)': e.shifts, 'Pay (PHP)': e.pay,
+      });
+    }
+  }
+  allShifts.sort((a,b) => a.Worker.localeCompare(b.Worker) || new Date(a['Time In']) - new Date(b['Time In']));
+  const ws1 = XLSX.utils.json_to_sheet(allShifts);
+  ws1['!cols'] = [{wch:24},{wch:12},{wch:6},{wch:10},{wch:22},{wch:22},{wch:10},{wch:12},{wch:12}];
+
+  const map = {};
+  for (const u of adminAllUsers) {
+    for (const e of u.entries) {
+      const wk = isoWeek(e.timeIn);
+      if (!map[wk]) {
+        const [m, s] = weekRange(e.timeIn);
+        map[wk] = { weekKey: wk, monStr: fmtDateShort(m), sunStr: fmtDateShort(s), monday: m, byUser: {} };
+      }
+      if (!map[wk].byUser[u.name]) map[wk].byUser[u.name] = { hours: 0, days: new Set() };
+      map[wk].byUser[u.name].hours += e.hours;
+      map[wk].byUser[u.name].days.add(e.dateKey);
+    }
+  }
+  const weekRows = [];
+  const orderedWeeks = Object.values(map).sort((a,b) => a.monday - b.monday);
+  let idx = 1;
+  for (const w of orderedWeeks) {
+    let weekTotalHours = 0, weekTotalShifts = 0, weekTotalPay = 0;
+    for (const [name, agg] of Object.entries(w.byUser).sort((a,b) => a[0].localeCompare(b[0]))) {
+      const shifts = Math.floor(agg.hours / 4);
+      const pay = shifts * PAY_PER_SHIFT;
+      weekRows.push({
+        'Week #': idx, 'ISO Week': w.weekKey, 'Period': w.monStr + ' – ' + w.sunStr,
+        Worker: name, 'Days Worked': agg.days.size,
+        'Hours': +agg.hours.toFixed(2), 'Shifts (4h)': shifts, 'Pay (PHP)': pay,
+      });
+      weekTotalHours += agg.hours; weekTotalShifts += shifts; weekTotalPay += pay;
+    }
+    weekRows.push({
+      'Week #': idx, 'ISO Week': w.weekKey, 'Period': w.monStr + ' – ' + w.sunStr,
+      Worker: '— WEEK TOTAL —', 'Days Worked': '',
+      'Hours': +weekTotalHours.toFixed(2), 'Shifts (4h)': weekTotalShifts, 'Pay (PHP)': weekTotalPay,
+    });
+    weekRows.push({});
+    idx++;
+  }
+  const ws2 = XLSX.utils.json_to_sheet(weekRows);
+  ws2['!cols'] = [{wch:7},{wch:10},{wch:20},{wch:24},{wch:12},{wch:10},{wch:12},{wch:12}];
+
+  const perWorker = {};
+  for (const u of adminAllUsers) {
+    const totalHours = u.entries.reduce((a,e) => a + e.hours, 0);
+    const shifts = Math.floor(totalHours / 4);
+    perWorker[u.name] = { Worker: u.name, 'Total Hours': +totalHours.toFixed(2), 'Total Shifts': shifts, 'Total Pay (PHP)': shifts * PAY_PER_SHIFT };
+  }
+  const summaryRows = Object.values(perWorker).sort((a,b) => a.Worker.localeCompare(b.Worker));
+  const ws3 = XLSX.utils.json_to_sheet(summaryRows);
+  ws3['!cols'] = [{wch:24},{wch:12},{wch:12},{wch:14}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'All Shifts');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Weekly Summary');
+  XLSX.utils.book_append_sheet(wb, ws3, 'Per-Worker Totals');
+  XLSX.writeFile(wb, 'admin-payroll-' + stamp + '.xlsx');
+}
+
+$('adminSignin').addEventListener('click', adminSignIn);
+$('adminPass').addEventListener('keydown', e => { if (e.key === 'Enter') adminSignIn(); });
+$('adminUser').addEventListener('keydown', e => { if (e.key === 'Enter') $('adminPass').focus(); });
+$('adminSignout').addEventListener('click', adminSignOut);
+$('refreshAdmin').addEventListener('click', loadAdminDashboard);
+$('exportAdmin').addEventListener('click', exportAdminExcel);
+
+// =========================== AUTO-RESUME ===========================
 try {
-  const saved = JSON.parse(sessionStorage.getItem('tt_session') || 'null');
-  if (saved && saved.name && saved.pin) {
-    nameEl.value = saved.name; pinEl.value = saved.pin;
-    signIn();
-  } else { showLogin('', false); }
-} catch { showLogin('', false); }
+  if (sessionStorage.getItem('tt_admin') === '1') {
+    loadAdminDashboard();
+  } else {
+    const saved = JSON.parse(sessionStorage.getItem('tt_worker') || 'null');
+    if (saved && saved.name && saved.pin) {
+      nameEl.value = saved.name; pinEl.value = saved.pin;
+      show('workerLogin');
+      workerSignIn();
+    } else {
+      show('landing');
+    }
+  }
+} catch { show('landing'); }
 </script>
 </body>
 </html>

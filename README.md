@@ -10,12 +10,25 @@ Anyone with the link can open it. No install, no sign-up — runs entirely in th
 
 ## How it works
 
-1. Open the link above.
-2. Type your name in the **Your name** field.
-3. Click **Time In** to start a shift. The page shows a live elapsed timer and tells you exactly when the 4-hour mark is reached.
-4. Click **Time Out** when you're done. If less than 4 hours elapsed, the app warns you the pay for that session will be ₱0 (each shift must hit the full 4-hour block to count).
-5. Repeat as many times as you want per day.
-6. Click **Export to Excel** to download your personal `.xlsx` file with today's date in the filename.
+The landing page has two sign-in options:
+
+### 👷 Login as Worker
+1. Click **Login as Worker**.
+2. Enter your **name** + a **4-digit PIN**. Same name + same PIN on any device = same data, synced live via Firebase Firestore.
+3. Click **Time In** to start a shift. Live elapsed timer + countdown to the 4-hour mark.
+4. Click **Time Out** when done. If less than 4 hours elapsed the app warns the pay for that session will be ₱0.
+5. Repeat as many times as you want per day, 7 days a week.
+6. Click **Export to Excel** to download your personal `.xlsx` (filename includes your name + today's date).
+
+### 🔑 Login as Admin (private dashboard)
+1. Click **Login as Admin** on the landing page.
+2. Enter the admin credentials (kept in the source for the project owner).
+3. The dashboard shows:
+   - Grand totals across all workers (workers, hours, shifts, payout).
+   - One block per ISO calendar week (newest first), labelled **Week N • YYYY-Www** with the actual Monday-to-Sunday date range.
+   - Per-week table: each worker's days worked (out of 7), hours, completed 4-hour shifts, salary.
+   - Week totals at the bottom of every week block.
+4. **Export all to Excel** generates a workbook with three sheets: *All Shifts*, *Weekly Summary*, *Per-Worker Totals*.
 
 ## Features
 
