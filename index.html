@@ -371,8 +371,8 @@ const firebaseConfig = {
 };
 
 // NOTE: client-side admin credentials are NOT secure. Anyone viewing source can read these.
-const ADMIN_USER = "admin";
-const ADMIN_PASS = "admin";
+const ADMIN_USER = "admin"; // matched case-insensitively
+const ADMIN_PASS = "Admin12$"; // exact match (case-sensitive)
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -731,8 +731,8 @@ function setAdminLoginStatus(msg, isError) {
 async function adminSignIn() {
   const u = ($('adminUser').value || '').trim();
   const p = ($('adminPass').value || '').trim();
-  if (u !== ADMIN_USER || p !== ADMIN_PASS) {
-    setAdminLoginStatus('Invalid admin credentials.', true);
+  if (u.toLowerCase() !== ADMIN_USER.toLowerCase() || p !== ADMIN_PASS) {
+    setAdminLoginStatus('Invalid manager credentials.', true);
     return;
   }
   setAdminLoginStatus('', false);
