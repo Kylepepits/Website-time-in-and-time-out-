@@ -219,6 +219,36 @@
   }
   .btn-paid:hover { filter: brightness(1.1); transform: translateY(-1px); }
   .btn-paid:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  /* ---------- Modal ---------- */
+  .modal { position: fixed; inset: 0; background: rgba(2,6,23,.78); backdrop-filter: blur(6px);
+    display: grid; place-items: center; z-index: 1000; padding: 16px; }
+  .modal.hidden { display: none; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 26px; width: 100%; max-width: 480px;
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .modal-card h2 { margin-top: 0; }
+  .modal-card .muted { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .modal-card .field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .modal-card .field label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .modal-card .field input { width: 100%; padding: 10px 12px; border-radius: 8px; }
+
+  /* ---------- Correction badges ---------- */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .badge-pending { background: rgba(245,158,11,.20); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+  .badge-approved { background: rgba(34,197,94,.20); color: #4ade80; border: 1px solid rgba(34,197,94,.4); }
+  .badge-rejected { background: rgba(239,68,68,.20); color: #fca5a5; border: 1px solid rgba(239,68,68,.4); }
+
+  .btn-approve { background: linear-gradient(135deg, #10b981, #22c55e); color:white; border:0;
+    border-radius:6px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; margin-right: 6px; }
+  .btn-reject { background: linear-gradient(135deg, #ef4444, #dc2626); color:white; border:0;
+    border-radius:6px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn-approve:hover, .btn-reject:hover { filter: brightness(1.1); }
+  .btn-correction { background: linear-gradient(135deg, #f59e0b, #f97316); color: white; border: 0;
+    border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+  .btn-correction:hover { filter: brightness(1.1); }
 </style>
 </head>
 <body>
@@ -326,6 +356,14 @@
     </div>
   </div>
 
+  <div id="correctionCard" class="card hidden">
+    <div class="row" style="justify-content: space-between;">
+      <strong>Attendance correction</strong>
+      <button id="reqCorrection" class="btn-correction" type="button">🛠 Request correction</button>
+    </div>
+    <div id="myCorrectionsWrap" style="margin-top: 8px;"></div>
+  </div>
+
   <div id="historyCard" class="card hidden">
     <div class="row" style="justify-content: space-between;">
       <strong>My shift history</strong>
@@ -349,11 +387,53 @@
     <div id="adminLoadingStatus" class="status out" style="margin-top:12px;">Loading…</div>
   </div>
 
+  <div id="adminPending" class="card hidden">
+    <h2 style="margin: 0 0 8px;">📝 Pending Attendance Corrections</h2>
+    <div id="adminPendingWrap"></div>
+  </div>
+
   <div id="adminGrand" class="card hidden">
     <div id="adminGrandStats" class="stats"></div>
   </div>
 
   <div id="adminWeeks"></div>
+
+  <div id="correctionModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>🛠 Request Attendance Correction</h2>
+      <div class="muted">Forgot to time in? Submit a request and your manager will approve or reject it.</div>
+      <div class="field">
+        <label for="corrDate">Date worked</label>
+        <input id="corrDate" type="date" />
+      </div>
+      <div class="field">
+        <label for="corrHours">Hours worked (required)</label>
+        <input id="corrHours" type="number" step="0.5" min="0.5" max="24" placeholder="e.g. 4.5" />
+      </div>
+      <div class="row" style="gap: 12px; margin-top: 4px;">
+        <div class="field" style="flex: 1;">
+          <label for="corrTimeIn">Time In (optional)</label>
+          <input id="corrTimeIn" type="time" />
+        </div>
+        <div class="field" style="flex: 1;">
+          <label for="corrTimeOut">Time Out (optional)</label>
+          <input id="corrTimeOut" type="time" />
+        </div>
+      </div>
+      <div class="earnings-card" style="margin-top: 18px;">
+        <div>
+          <div class="label">Calculated pay</div>
+          <div id="corrPay" class="amount">₱0</div>
+          <div id="corrMeta" class="meta">Enter hours to see pay</div>
+        </div>
+      </div>
+      <div id="corrError" class="status error hidden" style="margin-top: 12px;"></div>
+      <div class="auth-actions">
+        <button id="corrSubmit" class="btn-signin" type="button">Submit request</button>
+        <button id="corrCancel" class="btn-clear" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -419,7 +499,7 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const VIEWS = ['landing', 'workerLogin', 'adminLogin', 'appCard', 'statsCard', 'historyCard', 'adminDash', 'adminGrand'];
+const VIEWS = ['landing', 'workerLogin', 'adminLogin', 'appCard', 'statsCard', 'historyCard', 'correctionCard', 'adminDash', 'adminPending', 'adminGrand'];
 function show(...ids) {
   for (const v of VIEWS) {
     const el = $(v);
@@ -438,7 +518,7 @@ $('backFromWorker').addEventListener('click', () => show('landing'));
 $('backFromAdmin').addEventListener('click', () => show('landing'));
 
 // =========================== WORKER FLOW ===========================
-let workerSession = null, entries = [], active = null;
+let workerSession = null, entries = [], active = null, corrections = [];
 
 const nameEl = $('name'), pinEl = $('pin');
 const loginStatus = $('loginStatus');
@@ -589,10 +669,11 @@ async function workerSignIn() {
     workerSession.unsubscribe = onSnapshot(docRef, (snap) => {
       const data = snap.data() || {};
       entries = Array.isArray(data.entries) ? data.entries : [];
+      corrections = Array.isArray(data.corrections) ? data.corrections : [];
       active = data.active || null;
       setSync('ok', 'Synced • ' + new Date().toLocaleTimeString());
-      show('appCard', 'statsCard', 'historyCard');
-      renderWorker(); tickLive();
+      show('appCard', 'statsCard', 'historyCard', 'correctionCard');
+      renderWorker(); renderMyCorrections(); tickLive();
     }, (err) => {
       setSync('err', 'Sync error: ' + err.code); console.error(err);
     });
@@ -735,6 +816,197 @@ function exportWorkerExcel() {
   XLSX.writeFile(wb, 'time-log-' + sanitizeFile(workerSession.name) + '-' + stamp + '.xlsx');
 }
 
+// ---------- Attendance correction (worker side) ----------
+const corrModal = $('correctionModal');
+const corrDateEl = $('corrDate');
+const corrHoursEl = $('corrHours');
+const corrInEl = $('corrTimeIn');
+const corrOutEl = $('corrTimeOut');
+const corrPayEl = $('corrPay');
+const corrMetaEl = $('corrMeta');
+const corrErrorEl = $('corrError');
+
+function ymdToDate(yyyymmdd, hhmm, defaultHour) {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  if (hhmm) {
+    const [hh, mi] = hhmm.split(':').map(Number);
+    return new Date(y, m - 1, d, hh, mi, 0, 0);
+  }
+  return new Date(y, m - 1, d, defaultHour || 12, 0, 0, 0);
+}
+
+function todayYmd() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function corrCalcHours() {
+  const tIn = corrInEl.value, tOut = corrOutEl.value;
+  let derived = null;
+  if (tIn && tOut) {
+    const [hi, mi] = tIn.split(':').map(Number);
+    const [ho, mo] = tOut.split(':').map(Number);
+    let mins = (ho * 60 + mo) - (hi * 60 + mi);
+    if (mins < 0) mins += 24 * 60; // overnight
+    derived = +(mins / 60).toFixed(2);
+  }
+  return derived;
+}
+
+function updateCorrPay() {
+  corrErrorEl.classList.add('hidden');
+  // If both times set, prefill hours
+  const derived = corrCalcHours();
+  if (derived != null && (!corrHoursEl.value || corrHoursEl.dataset.auto === '1')) {
+    corrHoursEl.value = derived;
+    corrHoursEl.dataset.auto = '1';
+  } else if (corrHoursEl.value && !derived) {
+    corrHoursEl.dataset.auto = '0';
+  }
+  const h = parseFloat(corrHoursEl.value);
+  if (!h || h <= 0) {
+    corrPayEl.textContent = '₱0';
+    corrMetaEl.textContent = 'Enter hours to see pay';
+    return;
+  }
+  if (h > 24) {
+    corrPayEl.textContent = '—';
+    corrMetaEl.textContent = 'Max 24 hours per shift';
+    return;
+  }
+  const pay = calcPay(h);
+  corrPayEl.textContent = peso(pay);
+  corrMetaEl.textContent = h.toFixed(2) + ' hours @ ₱125/hr (₱62.50 / 30 min)';
+}
+
+function openCorrectionModal() {
+  if (!workerSession) return;
+  corrDateEl.value = todayYmd();
+  corrHoursEl.value = '';
+  corrHoursEl.dataset.auto = '0';
+  corrInEl.value = '';
+  corrOutEl.value = '';
+  corrErrorEl.classList.add('hidden');
+  updateCorrPay();
+  corrModal.classList.remove('hidden');
+  corrHoursEl.focus();
+}
+function closeCorrectionModal() { corrModal.classList.add('hidden'); }
+
+corrHoursEl.addEventListener('input', () => { corrHoursEl.dataset.auto = '0'; updateCorrPay(); });
+corrInEl.addEventListener('input', updateCorrPay);
+corrOutEl.addEventListener('input', updateCorrPay);
+corrDateEl.addEventListener('input', updateCorrPay);
+$('reqCorrection').addEventListener('click', openCorrectionModal);
+$('corrCancel').addEventListener('click', closeCorrectionModal);
+corrModal.addEventListener('click', e => { if (e.target === corrModal) closeCorrectionModal(); });
+
+async function submitCorrection() {
+  if (!workerSession) return;
+  corrErrorEl.classList.add('hidden');
+  const dateVal = corrDateEl.value;
+  const hours = parseFloat(corrHoursEl.value);
+  const tIn = corrInEl.value || null;
+  const tOut = corrOutEl.value || null;
+  if (!dateVal) { corrErrorEl.textContent = 'Pick a date.'; corrErrorEl.classList.remove('hidden'); return; }
+  if (!hours || hours <= 0) { corrErrorEl.textContent = 'Hours must be greater than 0.'; corrErrorEl.classList.remove('hidden'); return; }
+  if (hours > 24) { corrErrorEl.textContent = 'Hours must be 24 or less.'; corrErrorEl.classList.remove('hidden'); return; }
+
+  // Build timestamps for the entry that gets created on approval
+  const tInDate = tIn ? ymdToDate(dateVal, tIn) : ymdToDate(dateVal, null, 12);
+  const tOutDate = tOut ? ymdToDate(dateVal, tOut) : new Date(tInDate.getTime() + hours * 3600000);
+
+  const id = 'corr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const correction = {
+    id, name: workerSession.name,
+    dateKey: tInDate.toLocaleDateString(),
+    hours: +hours.toFixed(2),
+    timeIn: tInDate.getTime(),
+    timeOut: tOutDate.getTime(),
+    timeInProvided: !!tIn,
+    timeOutProvided: !!tOut,
+    pay: calcPay(hours),
+    status: 'pending',
+    submittedAt: Date.now(),
+  };
+
+  $('corrSubmit').disabled = true;
+  try {
+    const updated = corrections.concat([correction]);
+    await updateDoc(workerSession.docRef, { corrections: updated, updatedAt: serverTimestamp() });
+    closeCorrectionModal();
+  } catch (err) {
+    corrErrorEl.textContent = 'Submit failed: ' + (err.message || err.code);
+    corrErrorEl.classList.remove('hidden');
+  } finally {
+    $('corrSubmit').disabled = false;
+  }
+}
+$('corrSubmit').addEventListener('click', submitCorrection);
+
+function renderMyCorrections() {
+  const wrap = $('myCorrectionsWrap');
+  clearChildren(wrap);
+  if (corrections.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = 'No correction requests yet.';
+    wrap.appendChild(d);
+    return;
+  }
+  // Group by status
+  const groups = [
+    { key: 'pending', label: 'Pending approval', cls: 'badge-pending' },
+    { key: 'rejected', label: 'Rejected', cls: 'badge-rejected' },
+    { key: 'approved', label: 'Approved (now in shift history)', cls: 'badge-approved' },
+  ];
+  for (const g of groups) {
+    const items = corrections.filter(c => c.status === g.key);
+    if (items.length === 0) continue;
+    const heading = document.createElement('div');
+    heading.style.cssText = 'margin-top: 14px; font-size: 13px; font-weight: 700; color: var(--muted);';
+    heading.textContent = g.label + ' (' + items.length + ')';
+    wrap.appendChild(heading);
+
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Date','Hours','Time In','Time Out','Pay','Status','Submitted'].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const c of items.slice().reverse()) {
+      const tr = document.createElement('tr');
+      const cells = [
+        c.dateKey,
+        c.hours.toFixed(2),
+        c.timeInProvided ? fmtTime(c.timeIn) : '—',
+        c.timeOutProvided ? fmtTime(c.timeOut) : '—',
+        peso(c.pay),
+        '',
+        new Date(c.submittedAt).toLocaleString(),
+      ];
+      cells.forEach((val, i) => {
+        const td = document.createElement('td');
+        if (i === 5) {
+          const span = document.createElement('span');
+          span.className = 'badge ' + g.cls;
+          span.textContent = c.status;
+          td.appendChild(span);
+        } else {
+          td.textContent = val;
+          if (i === 4) td.className = 'pay';
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+}
+
 $('signin').addEventListener('click', workerSignIn);
 pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') workerSignIn(); });
 nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') pinEl.focus(); });
@@ -783,26 +1055,31 @@ async function loadAdminDashboard() {
     const migrationPromises = [];
     snap.forEach(s => {
       const d = s.data() || {};
-      if (Array.isArray(d.entries) && d.entries.length > 0) {
-        // Recalculate pay using the current rule. If any entry's stored pay
-        // differs from the recomputed value, overwrite the entries array in
-        // Firestore so the old number is gone.
-        let dirty = false;
-        const fixed = d.entries.map(e => {
-          const newPay = calcPay(e.hours);
-          if (e.pay !== newPay) { dirty = true; return { ...e, pay: newPay }; }
-          return e;
-        });
-        if (dirty) {
-          migrationPromises.push(
-            updateDoc(doc(db, 'users', s.id), { entries: fixed, updatedAt: serverTimestamp() })
-              .catch(err => console.error('Pay migration for ' + (d.name || s.id) + ':', err))
-          );
-        }
-        adminAllUsers.push({ id: s.id, name: d.name || '(unnamed)', entries: dirty ? fixed : d.entries });
+      const userEntries = Array.isArray(d.entries) ? d.entries : [];
+      const userCorrections = Array.isArray(d.corrections) ? d.corrections : [];
+      if (userEntries.length === 0 && userCorrections.length === 0) return;
+      // Migrate stored pay
+      let dirty = false;
+      const fixed = userEntries.map(e => {
+        const newPay = calcPay(e.hours);
+        if (e.pay !== newPay) { dirty = true; return { ...e, pay: newPay }; }
+        return e;
+      });
+      if (dirty) {
+        migrationPromises.push(
+          updateDoc(doc(db, 'users', s.id), { entries: fixed, updatedAt: serverTimestamp() })
+            .catch(err => console.error('Pay migration for ' + (d.name || s.id) + ':', err))
+        );
       }
+      adminAllUsers.push({
+        id: s.id,
+        name: d.name || '(unnamed)',
+        entries: dirty ? fixed : userEntries,
+        corrections: userCorrections,
+      });
     });
     if (migrationPromises.length) await Promise.all(migrationPromises);
+    renderAdminPending();
     ls.classList.add('hidden');
     renderAdminDashboard();
   } catch (err) {
@@ -963,6 +1240,116 @@ async function markPaidForWeek(userId, name, weekKey, monday, sunday, pay, btn) 
     alert('Failed to mark paid: ' + (err.message || err.code));
     btn.disabled = false;
     btn.textContent = '✓ Paid';
+  }
+}
+
+function renderAdminPending() {
+  const wrap = $('adminPendingWrap');
+  clearChildren(wrap);
+  // Collect all pending across all users
+  const pending = [];
+  for (const u of adminAllUsers) {
+    for (const c of (u.corrections || [])) {
+      if (c.status === 'pending') pending.push({ user: u, correction: c });
+    }
+  }
+  const card = $('adminPending');
+  if (pending.length === 0) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  ['Worker','Date','Hours','Time In','Time Out','Pay','Submitted','Action'].forEach(h => {
+    const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const p of pending) {
+    const c = p.correction;
+    const tr = document.createElement('tr');
+    const cells = [
+      p.user.name,
+      c.dateKey,
+      c.hours.toFixed(2),
+      c.timeInProvided ? fmtTime(c.timeIn) : '—',
+      c.timeOutProvided ? fmtTime(c.timeOut) : '—',
+      peso(c.pay),
+      new Date(c.submittedAt).toLocaleString(),
+      '',
+    ];
+    cells.forEach((val, i) => {
+      const td = document.createElement('td');
+      if (i === 7) {
+        const ap = document.createElement('button');
+        ap.className = 'btn-approve'; ap.textContent = '✓ Approve'; ap.type = 'button';
+        ap.addEventListener('click', () => approveCorrection(p.user.id, c.id));
+        const rj = document.createElement('button');
+        rj.className = 'btn-reject'; rj.textContent = '✗ Reject'; rj.type = 'button';
+        rj.addEventListener('click', () => rejectCorrection(p.user.id, c.id));
+        td.appendChild(ap); td.appendChild(rj);
+      } else {
+        td.textContent = val;
+        if (i === 5) td.className = 'pay';
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
+async function approveCorrection(userId, correctionId) {
+  if (!confirm('Approve this correction? It will be added to the worker\'s shift history.')) return;
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) throw new Error('User record not found.');
+    const data = snap.data() || {};
+    const corrs = Array.isArray(data.corrections) ? data.corrections.slice() : [];
+    const idx = corrs.findIndex(c => c.id === correctionId);
+    if (idx === -1) throw new Error('Correction not found.');
+    if (corrs[idx].status !== 'pending') throw new Error('Already decided.');
+    const c = corrs[idx];
+    corrs[idx] = { ...c, status: 'approved', decidedAt: Date.now() };
+    const newEntries = (Array.isArray(data.entries) ? data.entries.slice() : []).concat([{
+      name: c.name,
+      dateKey: c.dateKey,
+      timeIn: c.timeIn,
+      timeOut: c.timeOut,
+      hours: c.hours,
+      shifts: 1,
+      pay: calcPay(c.hours),
+      correctionId: c.id,
+    }]);
+    await updateDoc(userRef, { entries: newEntries, corrections: corrs, updatedAt: serverTimestamp() });
+    await loadAdminDashboard();
+  } catch (err) {
+    alert('Approve failed: ' + (err.message || err.code));
+  }
+}
+
+async function rejectCorrection(userId, correctionId) {
+  const reason = prompt('Reason for rejection (optional):') || '';
+  if (reason === null) return;
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) throw new Error('User record not found.');
+    const data = snap.data() || {};
+    const corrs = Array.isArray(data.corrections) ? data.corrections.slice() : [];
+    const idx = corrs.findIndex(c => c.id === correctionId);
+    if (idx === -1) throw new Error('Correction not found.');
+    if (corrs[idx].status !== 'pending') throw new Error('Already decided.');
+    corrs[idx] = { ...corrs[idx], status: 'rejected', decidedAt: Date.now(), reason };
+    await updateDoc(userRef, { corrections: corrs, updatedAt: serverTimestamp() });
+    await loadAdminDashboard();
+  } catch (err) {
+    alert('Reject failed: ' + (err.message || err.code));
   }
 }
 
