@@ -183,6 +183,15 @@
   .week-title { font-size: 16px; font-weight: 700; }
   .week-sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .week-totals { color: #4ade80; font-weight: 700; margin-top: 8px; font-size: 14px; }
+  .btn-paid {
+    background: linear-gradient(135deg, #10b981, #22c55e);
+    color: white; border: 0; border-radius: 6px;
+    padding: 6px 12px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: filter .12s, transform .12s;
+    box-shadow: 0 4px 12px rgba(34,197,94,.25);
+  }
+  .btn-paid:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-paid:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 </style>
 </head>
 <body>
@@ -677,7 +686,7 @@ async function loadAdminDashboard() {
     snap.forEach(s => {
       const d = s.data() || {};
       if (Array.isArray(d.entries) && d.entries.length > 0) {
-        adminAllUsers.push({ name: d.name || '(unnamed)', entries: d.entries });
+        adminAllUsers.push({ id: s.id, name: d.name || '(unnamed)', entries: d.entries });
       }
     });
     ls.classList.add('hidden');
@@ -702,7 +711,7 @@ function renderAdminDashboard() {
         byWeek[wk] = { weekKey: wk, monday: mon, sunday: sun, byUser: {} };
       }
       const bu = byWeek[wk].byUser;
-      if (!bu[u.name]) bu[u.name] = { hours: 0, days: new Set(), entries: [] };
+      if (!bu[u.name]) bu[u.name] = { userId: u.id, hours: 0, days: new Set(), entries: [] };
       bu[u.name].hours += e.hours;
       bu[u.name].days.add(e.dateKey);
       bu[u.name].entries.push(e);
@@ -758,9 +767,9 @@ function renderAdminDashboard() {
     const t = document.createElement('table');
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
-    ['Worker', 'Days worked (of 7)', 'Hours', 'Shifts (4h)', 'Salary (Mon–Sun)'].forEach((h, i) => {
+    ['Worker', 'Days worked (of 7)', 'Hours', 'Shifts (4h)', 'Salary (Mon–Sun)', 'Action'].forEach((h, i) => {
       const th = document.createElement('th'); th.textContent = h;
-      if (i >= 1) th.className = 'num';
+      if (i >= 1 && i <= 4) th.className = 'num';
       trh.appendChild(th);
     });
     thead.appendChild(trh);
@@ -787,6 +796,16 @@ function renderAdminDashboard() {
         if (c.cls) td.className = c.cls;
         tr.appendChild(td);
       }
+      // "Paid" action cell
+      const actionTd = document.createElement('td');
+      const paidBtn = document.createElement('button');
+      paidBtn.className = 'btn-paid';
+      paidBtn.type = 'button';
+      paidBtn.textContent = '✓ Paid';
+      paidBtn.title = 'Mark this worker as paid for this week and reset their week to zero';
+      paidBtn.addEventListener('click', () => markPaidForWeek(agg.userId, name, w.weekKey, w.monday, w.sunday, pay, paidBtn));
+      actionTd.appendChild(paidBtn);
+      tr.appendChild(actionTd);
       tbody.appendChild(tr);
     }
     t.appendChild(tbody);
@@ -799,6 +818,38 @@ function renderAdminDashboard() {
 
     container.appendChild(block);
     weekIndex--;
+  }
+}
+
+async function markPaidForWeek(userId, name, weekKey, monday, sunday, pay, btn) {
+  const range = fmtDateShort(monday) + ' – ' + fmtDateShort(sunday);
+  if (!confirm('Mark ' + name + ' as PAID for ' + weekKey + ' (' + range + ')?\n\nThis will DELETE their shift entries within ' + range + ' (₱' + Math.round(pay).toLocaleString() + ' paid).\nThe week resets to zero so they can start fresh.\n\nThis cannot be undone.')) return;
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) throw new Error('User record not found.');
+    const data = snap.data() || {};
+    const allEntries = Array.isArray(data.entries) ? data.entries : [];
+    const startMs = monday.getTime();
+    const endMs = sunday.getTime() + 24 * 60 * 60 * 1000 - 1;
+    const remaining = allEntries.filter(e => !(e.timeIn >= startMs && e.timeIn <= endMs));
+    const paidLog = Array.isArray(data.paidLog) ? data.paidLog.slice() : [];
+    paidLog.push({
+      week: weekKey, range,
+      paidAt: Date.now(),
+      amount: Math.round(pay),
+      entriesCleared: allEntries.length - remaining.length,
+    });
+    await updateDoc(userRef, { entries: remaining, paidLog, updatedAt: serverTimestamp() });
+    await loadAdminDashboard();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to mark paid: ' + (err.message || err.code));
+    btn.disabled = false;
+    btn.textContent = '✓ Paid';
   }
 }
 
