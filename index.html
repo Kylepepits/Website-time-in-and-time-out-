@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Time Tracker — 4-hour shifts</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #22c55e;
+    --accent-2: #ef4444;
+    --warn: #f59e0b;
+    --border: #475569;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  .sub { color: var(--muted); margin-bottom: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px; margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  label { color: var(--muted); font-size: 13px; }
+  input[type=text] {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font: inherit; min-width: 200px;
+  }
+  button {
+    border: 0; border-radius: 6px; padding: 9px 14px;
+    font: inherit; font-weight: 600; cursor: pointer;
+    color: white; transition: filter .12s;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+  .btn-in { background: var(--accent); }
+  .btn-out { background: var(--accent-2); }
+  .btn-export { background: #0ea5e9; }
+  .btn-clear { background: #6b7280; }
+  .status {
+    padding: 10px 14px; border-radius: 6px; margin-top: 10px;
+    font-weight: 600;
+  }
+  .status.in { background: rgba(34,197,94,.15); color: #4ade80; }
+  .status.out { background: rgba(148,163,184,.15); color: var(--muted); }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+  .stat {
+    background: var(--panel-2); padding: 10px 14px; border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .stat .v { font-size: 20px; font-weight: 700; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  table {
+    width: 100%; border-collapse: collapse; margin-top: 8px;
+  }
+  th, td {
+    text-align: left; padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .empty { color: var(--muted); padding: 20px; text-align: center; }
+  .pay { color: #4ade80; font-weight: 600; }
+  .live-timer { color: var(--warn); font-variant-numeric: tabular-nums; }
+  .shift-warn { font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Time Tracker</h1>
+  <div class="sub">4-hour shifts • ₱500 per shift • 7 days a week • multiple shifts per day allowed</div>
+
+  <div class="card">
+    <div class="row">
+      <label for="name">Your name</label>
+      <input id="name" type="text" placeholder="e.g. Juan dela Cruz" autocomplete="off" maxlength="80" />
+      <button id="switchUser" class="btn-clear" type="button">Switch user</button>
+    </div>
+    <div class="row" style="margin-top: 14px;">
+      <button id="timeIn" class="btn-in" type="button">Time In</button>
+      <button id="timeOut" class="btn-out" type="button" disabled>Time Out</button>
+      <span id="liveTimer" class="live-timer"></span>
+    </div>
+    <div id="status" class="status out">Not clocked in.</div>
+    <div id="shiftWarn" class="shift-warn"></div>
+  </div>
+
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><div id="todayShifts" class="v">0</div><div class="l">Shifts today</div></div>
+      <div class="stat"><div id="todayHours" class="v">0.00</div><div class="l">Hours today</div></div>
+      <div class="stat"><div id="todayPay" class="v pay">₱0</div><div class="l">Pay today</div></div>
+      <div class="stat"><div id="weekShifts" class="v">0</div><div class="l">Shifts this week (7d)</div></div>
+      <div class="stat"><div id="weekPay" class="v pay">₱0</div><div class="l">Pay this week</div></div>
+      <div class="stat"><div id="totalShifts" class="v">0</div><div class="l">Total shifts</div></div>
+      <div class="stat"><div id="totalPay" class="v pay">₱0</div><div class="l">Total pay</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content: space-between;">
+      <strong>My shift history</strong>
+      <div class="row">
+        <button id="export" class="btn-export" type="button">Export to Excel</button>
+        <button id="clear" class="btn-clear" type="button">Clear all</button>
+      </div>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+</div>
+
+<script>
+const STORE_KEY = 'timeTrackerEntries_v1';
+const ACTIVE_KEY = 'timeTrackerActive_v1';
+const NAME_KEY = 'timeTrackerName_v1';
+const SHIFT_MS = 4 * 60 * 60 * 1000;
+const PAY_PER_SHIFT = 500;
+
+const $ = id => document.getElementById(id);
+const nameEl = $('name');
+const timeInBtn = $('timeIn');
+const timeOutBtn = $('timeOut');
+const statusEl = $('status');
+const liveTimer = $('liveTimer');
+const shiftWarn = $('shiftWarn');
+const tableWrap = $('tableWrap');
+
+const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+let entries = load(STORE_KEY, []);
+let active = load(ACTIVE_KEY, null);
+nameEl.value = load(NAME_KEY, '') || '';
+
+const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const fmtDuration = ms => {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+};
+const todayKey = () => new Date().toLocaleDateString();
+const peso = n => '₱' + n.toLocaleString();
+const calcPay = hours => Math.floor(hours / 4) * PAY_PER_SHIFT;
+
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const dayName = ts => DAY_NAMES[new Date(ts).getDay()];
+
+// ISO week (Monday-start): returns "YYYY-Www"
+function isoWeek(ts) {
+  const d = new Date(ts);
+  d.setHours(0,0,0,0);
+  // Thursday in current week determines the year
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getFullYear() + '-W' + String(weekNo).padStart(2,'0');
+}
+
+const sanitizeFile = s => (s || 'unnamed').replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g,'_').slice(0, 40) || 'unnamed';
+
+function currentUser() { return (nameEl.value || '').trim(); }
+function entriesForCurrentUser() {
+  const u = currentUser().toLowerCase();
+  if (!u) return [];
+  return entries.filter(e => (e.name || '').toLowerCase() === u);
+}
+
+function setText(id, v) { $(id).textContent = v; }
+
+function buildTable() {
+  while (tableWrap.firstChild) tableWrap.removeChild(tableWrap.firstChild);
+  const myEntries = entriesForCurrentUser();
+  if (myEntries.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    d.textContent = currentUser() ? 'No shifts logged yet for ' + currentUser() + '.' : 'Enter your name to see your shift history.';
+    tableWrap.appendChild(d);
+    return;
+  }
+  const headers = ['Name', 'Date', 'Day', 'Time In', 'Time Out', 'Hours', 'Shifts (4h)', 'Pay'];
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  for (const h of headers) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    trh.appendChild(th);
+  }
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const e of myEntries.slice().reverse()) {
+    const tr = document.createElement('tr');
+    const cells = [
+      e.name,
+      e.dateKey,
+      dayName(e.timeIn),
+      fmtTime(e.timeIn),
+      fmtTime(e.timeOut),
+      e.hours.toFixed(2),
+      String(e.shifts),
+      peso(e.pay),
+    ];
+    cells.forEach((val, i) => {
+      const td = document.createElement('td');
+      td.textContent = val;
+      if (i === 7) td.className = 'pay';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+}
+
+function render() {
+  const name = (nameEl.value || '').trim();
+  timeInBtn.disabled = !!active || !name;
+
+  if (active) {
+    timeOutBtn.disabled = false;
+    statusEl.className = 'status in';
+    statusEl.textContent = 'Clocked in as ' + active.name + ' since ' + fmtTime(active.timeIn) + '.';
+  } else {
+    timeOutBtn.disabled = true;
+    statusEl.className = 'status out';
+    statusEl.textContent = name ? 'Hello ' + name + ' — ready to clock in.' : 'Enter your name to clock in.';
+    liveTimer.textContent = '';
+    shiftWarn.textContent = '';
+  }
+
+  const today = todayKey();
+  const myEntries = entriesForCurrentUser();
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const todays = myEntries.filter(e => e.dateKey === today);
+  const weekly = myEntries.filter(e => e.timeIn >= sevenDaysAgo);
+  const todayHours = todays.reduce((a,e) => a + e.hours, 0);
+  const weekHours = weekly.reduce((a,e) => a + e.hours, 0);
+  const totalHours = myEntries.reduce((a,e) => a + e.hours, 0);
+  setText('todayShifts', String(Math.floor(todayHours / 4)));
+  setText('todayHours', todayHours.toFixed(2));
+  setText('todayPay', peso(calcPay(todayHours)));
+  setText('weekShifts', String(Math.floor(weekHours / 4)));
+  setText('weekPay', peso(calcPay(weekHours)));
+  setText('totalShifts', String(Math.floor(totalHours / 4)));
+  setText('totalPay', peso(calcPay(totalHours)));
+
+  buildTable();
+}
+
+function tickLive() {
+  if (!active) return;
+  const elapsed = Date.now() - active.timeIn;
+  liveTimer.textContent = 'Elapsed: ' + fmtDuration(elapsed);
+  if (elapsed < SHIFT_MS) {
+    const left = SHIFT_MS - elapsed;
+    shiftWarn.textContent = fmtDuration(left) + ' until first 4-hour shift completes.';
+    shiftWarn.style.color = 'var(--warn)';
+  } else {
+    const completed = Math.floor(elapsed / SHIFT_MS);
+    shiftWarn.textContent = '✓ ' + completed + ' full shift' + (completed > 1 ? 's' : '') + ' completed (' + peso(completed * PAY_PER_SHIFT) + ' earned). You can clock out any time.';
+    shiftWarn.style.color = '#4ade80';
+  }
+}
+
+nameEl.addEventListener('input', () => { save(NAME_KEY, nameEl.value); render(); });
+
+$('switchUser').addEventListener('click', () => {
+  if (active) { alert('Clock out first before switching users.'); return; }
+  nameEl.value = '';
+  save(NAME_KEY, '');
+  render();
+  nameEl.focus();
+});
+
+timeInBtn.addEventListener('click', () => {
+  const name = (nameEl.value || '').trim();
+  if (!name) { alert('Please enter your name first.'); nameEl.focus(); return; }
+  active = { name, timeIn: Date.now() };
+  save(ACTIVE_KEY, active);
+  render();
+});
+
+timeOutBtn.addEventListener('click', () => {
+  if (!active) return;
+  const now = Date.now();
+  const elapsed = now - active.timeIn;
+  if (elapsed < SHIFT_MS) {
+    const left = SHIFT_MS - elapsed;
+    if (!confirm('Only ' + fmtDuration(elapsed) + ' elapsed. A full 4-hour shift requires ' + fmtDuration(left) + ' more — pay will be ₱0 for this incomplete shift. Clock out anyway?')) return;
+  }
+  const hours = elapsed / 3600000;
+  const shifts = Math.floor(hours / 4);
+  const pay = shifts * PAY_PER_SHIFT;
+  entries.push({
+    name: active.name,
+    dateKey: new Date(active.timeIn).toLocaleDateString(),
+    timeIn: active.timeIn,
+    timeOut: now,
+    hours: +hours.toFixed(2),
+    shifts,
+    pay,
+  });
+  save(STORE_KEY, entries);
+  active = null;
+  save(ACTIVE_KEY, null);
+  render();
+});
+
+$('export').addEventListener('click', () => {
+  const user = currentUser();
+  if (!user) { alert('Enter your name first.'); nameEl.focus(); return; }
+  const myEntries = entriesForCurrentUser();
+  if (myEntries.length === 0) { alert('No shifts to export for ' + user + '.'); return; }
+
+  const stamp = new Date().toISOString().slice(0,10);
+
+  // Sheet 1: Shifts
+  const data = myEntries.map(e => ({
+    Name: e.name,
+    Date: e.dateKey,
+    Day: dayName(e.timeIn),
+    Week: isoWeek(e.timeIn),
+    'Time In': new Date(e.timeIn).toLocaleString(),
+    'Time Out': new Date(e.timeOut).toLocaleString(),
+    'Hours Worked': e.hours,
+    'Completed Shifts (4h)': e.shifts,
+    'Pay (PHP)': e.pay,
+  }));
+  const totalHours = myEntries.reduce((a,e) => a + e.hours, 0);
+  const totalShifts = Math.floor(totalHours / 4);
+  data.push({});
+  data.push({
+    Name: 'TOTAL',
+    Date: '',
+    Day: '',
+    Week: '',
+    'Time In': '',
+    'Time Out': '',
+    'Hours Worked': +totalHours.toFixed(2),
+    'Completed Shifts (4h)': totalShifts,
+    'Pay (PHP)': totalShifts * PAY_PER_SHIFT,
+  });
+  data.push({});
+  data.push({ Name: 'Exported on:', Date: stamp });
+  const ws1 = XLSX.utils.json_to_sheet(data);
+  ws1['!cols'] = [{wch:20},{wch:12},{wch:6},{wch:10},{wch:22},{wch:22},{wch:14},{wch:22},{wch:12}];
+
+  // Sheet 2: Weekly summary (7-day work week — Mon-Sun ISO)
+  const byWeek = {};
+  for (const e of myEntries) {
+    const w = isoWeek(e.timeIn);
+    if (!byWeek[w]) byWeek[w] = { week: w, hours: 0, days: new Set(), firstDate: e.dateKey, lastDate: e.dateKey };
+    byWeek[w].hours += e.hours;
+    byWeek[w].days.add(e.dateKey);
+    if (e.timeIn < new Date(byWeek[w].firstDate).getTime()) byWeek[w].firstDate = e.dateKey;
+    if (e.timeIn > new Date(byWeek[w].lastDate).getTime()) byWeek[w].lastDate = e.dateKey;
+  }
+  const weekRows = Object.values(byWeek).sort((a,b) => a.week.localeCompare(b.week)).map(w => ({
+    Week: w.week,
+    'Days Worked (out of 7)': w.days.size,
+    'Total Hours': +w.hours.toFixed(2),
+    'Completed Shifts (4h)': Math.floor(w.hours / 4),
+    'Pay (PHP)': Math.floor(w.hours / 4) * PAY_PER_SHIFT,
+  }));
+  const weekTotals = weekRows.reduce((a,r) => ({
+    hours: a.hours + r['Total Hours'],
+    shifts: a.shifts + r['Completed Shifts (4h)'],
+    pay: a.pay + r['Pay (PHP)'],
+  }), { hours: 0, shifts: 0, pay: 0 });
+  weekRows.push({});
+  weekRows.push({
+    Week: 'TOTAL',
+    'Days Worked (out of 7)': '',
+    'Total Hours': +weekTotals.hours.toFixed(2),
+    'Completed Shifts (4h)': weekTotals.shifts,
+    'Pay (PHP)': weekTotals.pay,
+  });
+  const ws2 = XLSX.utils.json_to_sheet(weekRows);
+  ws2['!cols'] = [{wch:12},{wch:22},{wch:14},{wch:22},{wch:12}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Shifts');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Weekly Summary');
+  const filename = 'time-log-' + sanitizeFile(user) + '-' + stamp + '.xlsx';
+  XLSX.writeFile(wb, filename);
+});
+
+$('clear').addEventListener('click', () => {
+  if (active) { alert('Clock out first.'); return; }
+  if (!confirm('Delete ALL logged shifts? This cannot be undone.')) return;
+  entries = [];
+  save(STORE_KEY, entries);
+  render();
+});
+
+setInterval(tickLive, 1000);
+render();
+tickLive();
+</script>
+</body>
+</html>
