@@ -233,6 +233,9 @@ async function workerSignIn() {
     const displayName = (claimSnap.exists() && claimSnap.data().name) ? claimSnap.data().name : rawName;
     const docRef = doc(db, 'users', userKey);
     workerSession = { name: displayName, userKey, docRef, unsubscribe: null };
+    userPhoto = null;
+    show('appCard', 'statsCard', 'historyCard', 'correctionCard');
+    renderAvatar(); // immediate render with letter or special photo (before Firestore snapshot arrives)
     sessionStorage.setItem('tt_worker', JSON.stringify({ name: rawName, pin }));
     setSync('', 'Connecting…');
     workerSession.unsubscribe = onSnapshot(docRef, (snap) => {
