@@ -321,6 +321,7 @@
       <div class="stat"><div id="todayPay" class="v pay">₱0</div><div class="l">Pay today</div></div>
       <div class="stat"><div id="weekShifts" class="v">0</div><div class="l">Shifts this week (7d)</div></div>
       <div class="stat"><div id="weekPay" class="v pay">₱0</div><div class="l">Pay this week</div></div>
+      <div class="stat"><div id="monthPay" class="v pay">₱0</div><div class="l" id="monthLabel">Earnings this month</div></div>
       <div class="stat"><div id="totalShifts" class="v">0</div><div class="l">Total shifts</div></div>
       <div class="stat"><div id="totalPay" class="v pay">₱0</div><div class="l">Total pay</div></div>
     </div>
@@ -495,16 +496,26 @@ function renderWorker() {
   }
   const today = todayKey();
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const curYear = now.getFullYear(), curMonth = now.getMonth();
+  const monthName = now.toLocaleString(undefined, { month: 'long', year: 'numeric' });
   const todays = entries.filter(e => e.dateKey === today);
   const weekly = entries.filter(e => e.timeIn >= sevenDaysAgo);
+  const monthly = entries.filter(e => {
+    const d = new Date(e.timeIn);
+    return d.getFullYear() === curYear && d.getMonth() === curMonth;
+  });
   const todayHours = todays.reduce((a,e) => a + e.hours, 0);
   const weekHours = weekly.reduce((a,e) => a + e.hours, 0);
+  const monthHours = monthly.reduce((a,e) => a + e.hours, 0);
   const totalHours = entries.reduce((a,e) => a + e.hours, 0);
   $('todayShifts').textContent = String(Math.floor(todayHours / 4));
   $('todayHours').textContent = todayHours.toFixed(2);
   $('todayPay').textContent = peso(calcPay(todayHours));
   $('weekShifts').textContent = String(Math.floor(weekHours / 4));
   $('weekPay').textContent = peso(calcPay(weekHours));
+  $('monthPay').textContent = peso(calcPay(monthHours));
+  $('monthLabel').textContent = 'Earnings — ' + monthName;
   $('totalShifts').textContent = String(Math.floor(totalHours / 4));
   $('totalPay').textContent = peso(calcPay(totalHours));
   buildWorkerTable();
