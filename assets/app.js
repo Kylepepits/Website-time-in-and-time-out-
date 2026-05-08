@@ -618,6 +618,33 @@ async function submitCorrection() {
 $('corrSubmit').addEventListener('click', submitCorrection);
 
 function renderMyCorrections() {
+  // Stat row: counts of pending / approved / rejected
+  const stats = $('correctionStats');
+  clearChildren(stats);
+  const counts = {
+    pending: corrections.filter(c => c.status === 'pending').length,
+    approved: corrections.filter(c => c.status === 'approved').length,
+    rejected: corrections.filter(c => c.status === 'rejected').length,
+  };
+  const tiles = [
+    { v: counts.pending, l: 'Pending approval', color: '#fbbf24' },
+    { v: counts.approved, l: 'Approved', color: '#4ade80' },
+    { v: counts.rejected, l: 'Denied', color: '#fca5a5' },
+  ];
+  for (const t of tiles) {
+    const div = document.createElement('div');
+    div.className = 'stat';
+    const v = document.createElement('div');
+    v.className = 'v';
+    v.style.color = t.color;
+    v.textContent = String(t.v);
+    const l = document.createElement('div');
+    l.className = 'l';
+    l.textContent = t.l;
+    div.appendChild(v); div.appendChild(l);
+    stats.appendChild(div);
+  }
+
   const wrap = $('myCorrectionsWrap');
   clearChildren(wrap);
   if (corrections.length === 0) {
