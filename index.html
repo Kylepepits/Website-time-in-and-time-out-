@@ -315,13 +315,13 @@
 
   <div id="statsCard" class="card hidden">
     <div class="stats">
-      <div class="stat"><div id="todayShifts" class="v">0</div><div class="l">Shifts today</div></div>
+      <div class="stat"><div id="todayShifts" class="v">0</div><div class="l">Sessions today</div></div>
       <div class="stat"><div id="todayHours" class="v">0.00</div><div class="l">Hours today</div></div>
       <div class="stat"><div id="todayPay" class="v pay">₱0</div><div class="l">Pay today</div></div>
-      <div class="stat"><div id="weekShifts" class="v">0</div><div class="l">Shifts this week (7d)</div></div>
+      <div class="stat"><div id="weekShifts" class="v">0</div><div class="l">Sessions this week (7d)</div></div>
       <div class="stat"><div id="weekPay" class="v pay">₱0</div><div class="l">Pay this week</div></div>
       <div class="stat"><div id="monthPay" class="v pay">₱0</div><div class="l" id="monthLabel">Earnings this month</div></div>
-      <div class="stat"><div id="totalShifts" class="v">0</div><div class="l">Total shifts</div></div>
+      <div class="stat"><div id="totalShifts" class="v">0</div><div class="l">Total sessions</div></div>
       <div class="stat"><div id="totalPay" class="v pay">₱0</div><div class="l">Total pay</div></div>
     </div>
   </div>
@@ -377,9 +377,9 @@ const ADMIN_PASS = "Admin12$"; // exact match (case-sensitive)
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const SHIFT_MS = 4 * 60 * 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
-const PAY_PER_30MIN = 62.5; // ₱62.50 per 30 minutes = ₱125/hr = ₱500 per 4 hr
+const MAX_SHIFT_MS = 24 * 60 * 60 * 1000; // hard cap: 24 hours per single shift
+const PAY_PER_30MIN = 62.5; // ₱62.50 per 30 minutes = ₱125/hr
 
 const $ = id => document.getElementById(id);
 function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
@@ -463,7 +463,7 @@ function buildWorkerTable() {
     const d = document.createElement('div'); d.className = 'empty';
     d.textContent = 'No shifts logged yet.'; tableWrap.appendChild(d); return;
   }
-  const headers = ['Date', 'Day', 'Time In', 'Time Out', 'Hours', 'Shifts (4h)', 'Pay'];
+  const headers = ['Date', 'Day', 'Time In', 'Time Out', 'Hours', 'Pay'];
   const table = document.createElement('table');
   const thead = document.createElement('thead'), trh = document.createElement('tr');
   for (const h of headers) { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); }
@@ -471,10 +471,10 @@ function buildWorkerTable() {
   const tbody = document.createElement('tbody');
   for (const e of entries.slice().reverse()) {
     const tr = document.createElement('tr');
-    const cells = [e.dateKey, dayName(e.timeIn), fmtTime(e.timeIn), fmtTime(e.timeOut), e.hours.toFixed(2), String(e.shifts), peso(calcPay(e.hours))];
+    const cells = [e.dateKey, dayName(e.timeIn), fmtTime(e.timeIn), fmtTime(e.timeOut), e.hours.toFixed(2), peso(calcPay(e.hours))];
     cells.forEach((val, i) => {
       const td = document.createElement('td'); td.textContent = val;
-      if (i === 6) td.className = 'pay';
+      if (i === 5) td.className = 'pay';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -508,14 +508,14 @@ function renderWorker() {
   const weekHours = weekly.reduce((a,e) => a + e.hours, 0);
   const monthHours = monthly.reduce((a,e) => a + e.hours, 0);
   const totalHours = entries.reduce((a,e) => a + e.hours, 0);
-  $('todayShifts').textContent = String(Math.floor(todayHours / 4));
+  $('todayShifts').textContent = String(todays.length);
   $('todayHours').textContent = todayHours.toFixed(2);
   $('todayPay').textContent = peso(calcPay(todayHours));
-  $('weekShifts').textContent = String(Math.floor(weekHours / 4));
+  $('weekShifts').textContent = String(weekly.length);
   $('weekPay').textContent = peso(calcPay(weekHours));
   $('monthPay').textContent = peso(calcPay(monthHours));
   $('monthLabel').textContent = 'Earnings — ' + monthName;
-  $('totalShifts').textContent = String(Math.floor(totalHours / 4));
+  $('totalShifts').textContent = String(entries.length);
   $('totalPay').textContent = peso(calcPay(totalHours));
   buildWorkerTable();
 }
@@ -636,24 +636,51 @@ function workerSignOut() {
 
 async function clockIn() {
   if (!workerSession || active) return;
+  const today = todayKey();
+  const todayHours = entries.filter(e => e.dateKey === today).reduce((a,e) => a + e.hours, 0);
+  if (todayHours >= 24) {
+    alert('You have already logged 24 hours today. Daily cap reached — cannot clock in again until tomorrow.');
+    return;
+  }
   try {
     await updateDoc(workerSession.docRef, { active: { name: workerSession.name, timeIn: Date.now() }, updatedAt: serverTimestamp() });
   } catch (err) { alert('Failed to clock in: ' + err.message); }
 }
 async function clockOut() {
   if (!workerSession || !active) return;
-  const now = Date.now(), elapsed = now - active.timeIn;
+  const now = Date.now();
+  let elapsed = now - active.timeIn;
   if (elapsed < HALF_HOUR_MS) {
     if (!confirm('Only ' + fmtDuration(elapsed) + ' elapsed. Less than 30 minutes — pay will be ₱0 for this session. Clock out anyway?')) return;
   }
+  let timeOutMs = now;
+  if (elapsed > MAX_SHIFT_MS) {
+    alert('Shift exceeded 24 hours — capping at 24h. Did you forget to clock out?');
+    elapsed = MAX_SHIFT_MS;
+    timeOutMs = active.timeIn + MAX_SHIFT_MS;
+  }
+  // Per-day 24h cap (sums earlier shifts that started on the same calendar day)
+  const sessionDay = new Date(active.timeIn).toLocaleDateString();
+  const dayPriorHours = entries.filter(e => e.dateKey === sessionDay).reduce((a,e) => a + e.hours, 0);
+  const remainingDailyMs = Math.max(0, MAX_SHIFT_MS - dayPriorHours * 3600000);
+  if (elapsed > remainingDailyMs) {
+    if (remainingDailyMs <= 0) {
+      alert('Daily 24-hour cap already reached for ' + sessionDay + '. This session will be recorded as 0 hours / ₱0.');
+      elapsed = 0;
+      timeOutMs = active.timeIn;
+    } else {
+      alert('Daily 24h cap: prior shifts today total ' + dayPriorHours.toFixed(2) + 'h. This session capped to ' + (remainingDailyMs / 3600000).toFixed(2) + 'h.');
+      elapsed = remainingDailyMs;
+      timeOutMs = active.timeIn + elapsed;
+    }
+  }
   const hours = elapsed / 3600000;
-  const shifts = Math.floor(hours / 4);
   const pay = calcPay(hours);
   const entry = {
     name: workerSession.name,
     dateKey: new Date(active.timeIn).toLocaleDateString(),
-    timeIn: active.timeIn, timeOut: now,
-    hours: +hours.toFixed(2), shifts, pay,
+    timeIn: active.timeIn, timeOut: timeOutMs,
+    hours: +hours.toFixed(2), shifts: 1, pay,
   };
   try {
     await updateDoc(workerSession.docRef, { entries: entries.concat([entry]), active: null, updatedAt: serverTimestamp() });
@@ -673,13 +700,13 @@ function exportWorkerExcel() {
   const data = entries.map(e => ({
     Name: e.name, Date: e.dateKey, Day: dayName(e.timeIn), Week: isoWeek(e.timeIn),
     'Time In': new Date(e.timeIn).toLocaleString(), 'Time Out': new Date(e.timeOut).toLocaleString(),
-    'Hours Worked': e.hours, 'Completed Shifts (4h)': e.shifts, 'Pay (PHP)': calcPay(e.hours),
+    'Hours Worked': e.hours, 'Sessions': e.shifts, 'Pay (PHP)': calcPay(e.hours),
   }));
   const totalHours = entries.reduce((a,e) => a + e.hours, 0);
   const totalShifts = Math.floor(totalHours / 4);
   data.push({});
   data.push({ Name: 'TOTAL', Date: '', Day: '', Week: '', 'Time In': '', 'Time Out': '',
-    'Hours Worked': +totalHours.toFixed(2), 'Completed Shifts (4h)': totalShifts, 'Pay (PHP)': calcPay(totalHours) });
+    'Hours Worked': +totalHours.toFixed(2), 'Sessions': totalShifts, 'Pay (PHP)': calcPay(totalHours) });
   data.push({}); data.push({ Name: 'Exported on:', Date: stamp });
   const ws1 = XLSX.utils.json_to_sheet(data);
   ws1['!cols'] = [{wch:20},{wch:12},{wch:6},{wch:10},{wch:22},{wch:22},{wch:14},{wch:22},{wch:12}];
@@ -687,18 +714,18 @@ function exportWorkerExcel() {
   const byWeek = {};
   for (const e of entries) {
     const w = isoWeek(e.timeIn);
-    if (!byWeek[w]) byWeek[w] = { week: w, hours: 0, days: new Set() };
-    byWeek[w].hours += e.hours; byWeek[w].days.add(e.dateKey);
+    if (!byWeek[w]) byWeek[w] = { week: w, hours: 0, days: new Set(), sessions: 0 };
+    byWeek[w].hours += e.hours; byWeek[w].days.add(e.dateKey); byWeek[w].sessions += 1;
   }
   const weekRows = Object.values(byWeek).sort((a,b) => a.week.localeCompare(b.week)).map(w => ({
     Week: w.week, 'Days Worked (out of 7)': w.days.size,
     'Total Hours': +w.hours.toFixed(2),
-    'Completed Shifts (4h)': Math.floor(w.hours / 4),
+    'Sessions': w.sessions,
     'Pay (PHP)': calcPay(w.hours),
   }));
-  const wT = weekRows.reduce((a,r) => ({ hours: a.hours + r['Total Hours'], shifts: a.shifts + r['Completed Shifts (4h)'], pay: a.pay + r['Pay (PHP)'] }), { hours: 0, shifts: 0, pay: 0 });
+  const wT = weekRows.reduce((a,r) => ({ hours: a.hours + r['Total Hours'], shifts: a.shifts + r['Sessions'], pay: a.pay + r['Pay (PHP)'] }), { hours: 0, shifts: 0, pay: 0 });
   weekRows.push({});
-  weekRows.push({ Week: 'TOTAL', 'Days Worked (out of 7)': '', 'Total Hours': +wT.hours.toFixed(2), 'Completed Shifts (4h)': wT.shifts, 'Pay (PHP)': calcPay(wT.hours) });
+  weekRows.push({ Week: 'TOTAL', 'Days Worked (out of 7)': '', 'Total Hours': +wT.hours.toFixed(2), 'Sessions': wT.shifts, 'Pay (PHP)': calcPay(wT.hours) });
   const ws2 = XLSX.utils.json_to_sheet(weekRows);
   ws2['!cols'] = [{wch:12},{wch:22},{wch:14},{wch:22},{wch:12}];
 
@@ -805,7 +832,8 @@ function renderAdminDashboard() {
       grandHours += e.hours;
     }
   }
-  const grandShifts = Math.floor(grandHours / 4);
+  let grandSessions = 0;
+  for (const u of adminAllUsers) grandSessions += u.entries.length;
   const grandPay = calcPay(grandHours);
 
   const gs = $('adminGrandStats');
@@ -813,7 +841,7 @@ function renderAdminDashboard() {
   const gt = [
     { v: String(userNames.size), l: 'Total workers' },
     { v: grandHours.toFixed(2), l: 'Total hours' },
-    { v: String(grandShifts), l: 'Total shifts (4h)' },
+    { v: String(grandSessions), l: 'Total sessions' },
     { v: peso(grandPay), l: 'Total payout', cls: 'pay' },
   ];
   for (const s of gt) {
@@ -854,7 +882,7 @@ function renderAdminDashboard() {
     const t = document.createElement('table');
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
-    ['Worker', 'Days worked (of 7)', 'Hours', 'Shifts (4h)', 'Salary (Mon–Sun)', 'Action'].forEach((h, i) => {
+    ['Worker', 'Days worked (of 7)', 'Hours', 'Sessions', 'Salary (Mon–Sun)', 'Action'].forEach((h, i) => {
       const th = document.createElement('th'); th.textContent = h;
       if (i >= 1 && i <= 4) th.className = 'num';
       trh.appendChild(th);
@@ -866,15 +894,15 @@ function renderAdminDashboard() {
     let weekHours = 0, weekShifts = 0, weekPay = 0;
     const userRows = Object.entries(w.byUser).sort((a,b) => a[0].localeCompare(b[0]));
     for (const [name, agg] of userRows) {
-      const shifts = Math.floor(agg.hours / 4);
+      const sessions = agg.entries.length;
       const pay = calcPay(agg.hours);
-      weekHours += agg.hours; weekShifts += shifts; weekPay += pay;
+      weekHours += agg.hours; weekShifts += sessions; weekPay += pay;
       const tr = document.createElement('tr');
       const cells = [
         { v: name },
         { v: agg.days.size + ' / 7', cls: 'num' },
         { v: agg.hours.toFixed(2), cls: 'num' },
-        { v: String(shifts), cls: 'num' },
+        { v: String(sessions), cls: 'num' },
         { v: peso(pay), cls: 'num pay' },
       ];
       for (const c of cells) {
@@ -900,7 +928,7 @@ function renderAdminDashboard() {
 
     const totals = document.createElement('div');
     totals.className = 'week-totals';
-    totals.textContent = 'Week total: ' + weekHours.toFixed(2) + ' h • ' + weekShifts + ' shifts • ' + peso(weekPay);
+    totals.textContent = 'Week total: ' + weekHours.toFixed(2) + ' h • ' + weekShifts + ' sessions • ' + peso(weekPay);
     block.appendChild(totals);
 
     container.appendChild(block);
@@ -949,7 +977,7 @@ function exportAdminExcel() {
         Worker: u.name, Date: e.dateKey, Day: dayName(e.timeIn), Week: isoWeek(e.timeIn),
         'Time In': new Date(e.timeIn).toLocaleString(),
         'Time Out': new Date(e.timeOut).toLocaleString(),
-        'Hours': e.hours, 'Shifts (4h)': e.shifts, 'Pay (PHP)': calcPay(e.hours),
+        'Hours': e.hours, 'Sessions': e.shifts, 'Pay (PHP)': calcPay(e.hours),
       });
     }
   }
@@ -976,19 +1004,19 @@ function exportAdminExcel() {
   for (const w of orderedWeeks) {
     let weekTotalHours = 0, weekTotalShifts = 0, weekTotalPay = 0;
     for (const [name, agg] of Object.entries(w.byUser).sort((a,b) => a[0].localeCompare(b[0]))) {
-      const shifts = Math.floor(agg.hours / 4);
+      const sessions = agg.entries.length;
       const pay = calcPay(agg.hours);
       weekRows.push({
         'Week #': idx, 'ISO Week': w.weekKey, 'Period': w.monStr + ' – ' + w.sunStr,
         Worker: name, 'Days Worked': agg.days.size,
-        'Hours': +agg.hours.toFixed(2), 'Shifts (4h)': shifts, 'Pay (PHP)': pay,
+        'Hours': +agg.hours.toFixed(2), 'Sessions': sessions, 'Pay (PHP)': pay,
       });
-      weekTotalHours += agg.hours; weekTotalShifts += shifts; weekTotalPay += pay;
+      weekTotalHours += agg.hours; weekTotalShifts += sessions; weekTotalPay += pay;
     }
     weekRows.push({
       'Week #': idx, 'ISO Week': w.weekKey, 'Period': w.monStr + ' – ' + w.sunStr,
       Worker: '— WEEK TOTAL —', 'Days Worked': '',
-      'Hours': +weekTotalHours.toFixed(2), 'Shifts (4h)': weekTotalShifts, 'Pay (PHP)': weekTotalPay,
+      'Hours': +weekTotalHours.toFixed(2), 'Sessions': weekTotalShifts, 'Pay (PHP)': weekTotalPay,
     });
     weekRows.push({});
     idx++;
@@ -999,8 +1027,7 @@ function exportAdminExcel() {
   const perWorker = {};
   for (const u of adminAllUsers) {
     const totalHours = u.entries.reduce((a,e) => a + e.hours, 0);
-    const shifts = Math.floor(totalHours / 4);
-    perWorker[u.name] = { Worker: u.name, 'Total Hours': +totalHours.toFixed(2), 'Total Shifts': shifts, 'Total Pay (PHP)': calcPay(totalHours) };
+    perWorker[u.name] = { Worker: u.name, 'Total Hours': +totalHours.toFixed(2), 'Total Sessions': u.entries.length, 'Total Pay (PHP)': calcPay(totalHours) };
   }
   const summaryRows = Object.values(perWorker).sort((a,b) => a.Worker.localeCompare(b.Worker));
   const ws3 = XLSX.utils.json_to_sheet(summaryRows);
