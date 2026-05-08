@@ -183,6 +183,33 @@
   .week-title { font-size: 16px; font-weight: 700; }
   .week-sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .week-totals { color: #4ade80; font-weight: 700; margin-top: 8px; font-size: 14px; }
+  .earnings-card {
+    margin-top: 16px; padding: 18px 22px;
+    background: linear-gradient(135deg, rgba(34,197,94,.16), rgba(20,184,166,.10));
+    border: 1px solid rgba(34,197,94,.35);
+    border-radius: 14px;
+    display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+  }
+  .earnings-card .label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: #86efac; font-weight: 600;
+  }
+  .earnings-card .amount {
+    font-size: 36px; font-weight: 800; color: #4ade80;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+    margin-top: 2px;
+  }
+  .earnings-card .meta {
+    color: #cbd5e1; font-size: 13px; margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .earnings-card .next {
+    text-align: right;
+    background: rgba(0,0,0,.18); border-radius: 10px; padding: 10px 14px;
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .earnings-card .next .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .earnings-card .next .v { color: var(--warn); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .btn-paid {
     background: linear-gradient(135deg, #10b981, #22c55e);
     color: white; border: 0; border-radius: 6px;
@@ -273,6 +300,17 @@
       <span id="liveTimer" class="live-timer"></span>
     </div>
     <div id="status" class="status out">Not clocked in.</div>
+    <div id="earningsCard" class="earnings-card hidden">
+      <div>
+        <div class="label">Earnings this shift</div>
+        <div id="earningsAmount" class="amount">₱0</div>
+        <div id="earningsMeta" class="meta">0h 0m elapsed</div>
+      </div>
+      <div class="next">
+        <div class="l">Next ₱62.50 in</div>
+        <div id="earningsNext" class="v">—</div>
+      </div>
+    </div>
     <div id="shiftWarn" class="shift-warn"></div>
   </div>
 
@@ -473,14 +511,24 @@ function renderWorker() {
 }
 
 function tickLive() {
-  if (!active) return;
+  const card = $('earningsCard');
+  if (!active) {
+    if (card) card.classList.add('hidden');
+    return;
+  }
   const elapsed = Date.now() - active.timeIn;
   liveTimer.textContent = 'Elapsed: ' + fmtDuration(elapsed);
   const earned = calcPay(elapsed / 3600000);
   const next30Ms = (Math.floor(elapsed / HALF_HOUR_MS) + 1) * HALF_HOUR_MS;
   const untilNext = next30Ms - elapsed;
-  shiftWarn.textContent = 'Earned so far: ' + peso(earned) + ' • next ₱62.50 in ' + fmtDuration(untilNext);
-  shiftWarn.style.color = earned > 0 ? '#4ade80' : 'var(--warn)';
+  const totalSec = Math.floor(elapsed / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  if (card) card.classList.remove('hidden');
+  $('earningsAmount').textContent = peso(earned);
+  $('earningsMeta').textContent = h + 'h ' + m + 'm elapsed';
+  $('earningsNext').textContent = fmtDuration(untilNext);
+  shiftWarn.textContent = '';
 }
 setInterval(tickLive, 1000);
 
